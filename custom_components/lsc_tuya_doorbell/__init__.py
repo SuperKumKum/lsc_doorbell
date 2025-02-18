@@ -148,9 +148,8 @@ class LscTuyaHub:
 
         self.device = Device(
             dev_id=config[CONF_DEVICE_ID],
-            address=host,
+            address=f"{host}:{config[CONF_PORT]}",
             local_key=config[CONF_LOCAL_KEY],
-            port=config[CONF_PORT],
             version=3.3
         )
 
