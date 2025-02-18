@@ -12,6 +12,7 @@ from homeassistant.helpers.event import async_call_later
 
 from .const import (
     DOMAIN,
+    CONF_NAME,
     CONF_LOCAL_KEY,
     CONF_DEVICE_ID,
     CONF_HOST,
@@ -21,8 +22,12 @@ from .const import (
     DEFAULT_PORT,
     DEFAULT_DPS_MAP,
     EVENT_BUTTON_PRESS,
-    EVENT_MOTION_DETECT
+    EVENT_MOTION_DETECT,
+    ATTR_DEVICE_ID,
+    ATTR_IMAGE_DATA,
+    ATTR_TIMESTAMP
 )
+from datetime import datetime
 
 import voluptuous as vol
 
