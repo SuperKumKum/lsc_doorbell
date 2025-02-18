@@ -85,9 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     await async_register_services(hass)
         
     # Set up sensor platform
-    hass.async_create_task(
-        hass.config_entries.async_forward_entry_setup(entry, "sensor")
-    )
+    await hass.config_entries.async_forward_entry_setup(entry, "sensor")
         
     return True
 
@@ -148,13 +146,15 @@ class LscTuyaHub:
 
         self.device = Device(
             dev_id=config[CONF_DEVICE_ID],
-            address=f"{host}:{config[CONF_PORT]}",
+            address=host,
             local_key=config[CONF_LOCAL_KEY],
             version=3.3
         )
 
         try:
-            await self.hass.async_add_executor_job(self.device.connect)
+            await self.hass.async_add_executor_job(self.device.set_socketPersistent, True)
+            await self.hass.async_add_executor_job(self.device.set_socketNODELAY, True)
+            await self.hass.async_add_executor_job(self.device.set_version, 3.3)
             _LOGGER.info("Connected to %s", config[CONF_NAME])
             self._reconnect_delay = 10
             self._start_listener()
