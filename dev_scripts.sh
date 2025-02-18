@@ -5,9 +5,11 @@ HA_CONFIG_DIR="./config"
 REPO_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 function install_deps() {
+    echo "Upgrading pip..."
+    python3 -m pip install --upgrade pip --break-system-packages
+    
     echo "Installing dependencies..."
     pip install -r requirements.txt --break-system-packages
-    pip install homeassistant-core[dev] --break-system-packages
 }
 
 function validate_integration() {
@@ -48,9 +50,11 @@ function run_hass() {
 
 function run_tests() {
     echo "Running tests..."
-    pip install pytest pytest-homeassistant --break-system-packages
-    mkdir -p tests/components/lsc_tuya_doorbell
-    pytest tests/components/lsc_tuya_doorbell/ --cov=custom_components/lsc_tuya_doorbell
+    pytest tests/components/lsc_tuya_doorbell/ \
+        --cov=custom_components/lsc_tuya_doorbell \
+        --cov-report=term-missing \
+        --cov-fail-under=80 \
+        --asyncio-mode=auto
 }
 
 function show_help() {
