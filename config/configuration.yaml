@@ -1,0 +1,13 @@
+default_config:
+
+logger:
+  default: info
+  logs:
+    custom_components.lsc_tuya_doorbell: debug
+
+lsc_tuya_doorbell:
+  devices:
+    - name: "Test Doorbell"
+      device_id: "your_device_id"
+      local_key: "your_local_key" 
+      mac: "device_mac_address"

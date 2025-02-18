@@ -17,14 +17,14 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     device_id = config_entry.data[CONF_DEVICE_ID]
     
     sensors = [
-        LcsTuyaMotionSensor(hub, device_id),
-        LcsTuyaButtonSensor(hub, device_id),
-        LcsTuyaStatusSensor(hub, device_id)
+        LscTuyaMotionSensor(hub, device_id),
+        LscTuyaButtonSensor(hub, device_id),
+        LscTuyaStatusSensor(hub, device_id)
     ]
     
     async_add_entities(sensors)
 
-class LcsTuyaMotionSensor(RestoreSensor):
+class LscTuyaMotionSensor(RestoreSensor):
     """Representation of a Motion Detection Sensor."""
     
     def __init__(self, hub, device_id):
@@ -35,7 +35,7 @@ class LcsTuyaMotionSensor(RestoreSensor):
         
     @property
     def name(self):
-        return f"LCS Tuya Motion {self._device_id[-4:]}"
+        return f"LSC Tuya Motion {self._device_id[-4:]}"
         
     @property
     def unique_id(self):
@@ -72,12 +72,12 @@ class LcsTuyaMotionSensor(RestoreSensor):
         self._state = "Idle"
         self.async_write_ha_state()
 
-class LcsTuyaButtonSensor(LcsTuyaMotionSensor):
+class LscTuyaButtonSensor(LscTuyaMotionSensor):
     """Representation of a Doorbell Button Sensor."""
     
     @property
     def name(self):
-        return f"LCS Tuya Button {self._device_id[-4:]}"
+        return f"LSC Tuya Button {self._device_id[-4:]}"
         
     @property
     def unique_id(self):
@@ -99,13 +99,13 @@ class LcsTuyaButtonSensor(LcsTuyaMotionSensor):
             self.hass.bus.async_listen(EVENT_BUTTON_PRESS, button_handler)
         )
 
-class LcsTuyaStatusSensor(SensorEntity):
+class LscTuyaStatusSensor(SensorEntity):
     """Device status sensor showing connection info."""
     
     def __init__(self, hub, device_id):
         self._hub = hub
         self._device_id = device_id
-        self._attr_name = f"LCS Tuya Status {device_id[-4:]}"
+        self._attr_name = f"LSC Tuya Status {device_id[-4:]}"
         self._attr_unique_id = f"{device_id}_status"
         self._attr_icon = "mdi:connection"
         

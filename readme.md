@@ -1,6 +1,6 @@
-# LCS Tuya Doorbell Integration for Home Assistant
+# LSC Tuya Doorbell Integration for Home Assistant
 
-This integration adds support for LCS branded Tuya doorbells sold at Action stores in the Netherlands. It works by connecting to the doorbell's local API using the device ID and key.
+This integration adds support for LSC branded Tuya doorbells sold at Action stores in the Netherlands. It works by connecting to the doorbell's local API using the device ID and key.
 
 ## Features
 
@@ -12,7 +12,7 @@ Other features (like video streaming, two-way audio, etc.) are not implemented a
 ## Prerequisites
 
 - Home Assistant instance
-- Tuya/LCS doorbell (from Action stores)
+- Tuya/LSC doorbell (from Action stores)
 - Device ID and local key for your doorbell (see "Getting Device ID and Key" section)
 - The doorbell must be on the same network as your Home Assistant instance
 
@@ -31,7 +31,7 @@ Other features (like video streaming, two-way audio, etc.) are not implemented a
 ### Manual Installation
 
 1. Download the latest release
-2. Copy the `lcs_tuya_doorbell` directory to your `config/custom_components` directory
+2. Copy the `lsc_tuya_doorbell` directory to your `config/custom_components` directory
 3. Restart Home Assistant
 
 ## Configuration
@@ -39,7 +39,7 @@ Other features (like video streaming, two-way audio, etc.) are not implemented a
 Add the following to your `configuration.yaml`:
 
 ```yaml
-lcs_tuya_doorbell:
+lsc_tuya_doorbell:
   devices:
     - name: Front Door
       device_id: YOUR_DEVICE_ID
@@ -59,8 +59,8 @@ You can extract the device ID and local key using one of these methods:
 
 This integration fires the following events:
 
-- `lcs_tuya_doorbell_button_press` - When the doorbell button is pressed
-- `lcs_tuya_doorbell_motion` - When motion is detected
+- `lsc_tuya_doorbell_button_press` - When the doorbell button is pressed
+- `lsc_tuya_doorbell_motion` - When motion is detected
 
 ## Usage with Automations
 
@@ -71,7 +71,7 @@ automation:
   - alias: "Doorbell Press Announcement"
     trigger:
       platform: event
-      event_type: lcs_tuya_doorbell_button_press
+      event_type: lsc_tuya_doorbell_button_press
     action:
       - service: tts.google_translate_say
         data:

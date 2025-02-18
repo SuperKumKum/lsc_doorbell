@@ -75,7 +75,7 @@ async def async_setup(hass: HomeAssistant, config: dict):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up from a config entry."""
     hass.data.setdefault(DOMAIN, {})
-    hub = LcsTuyaHub(hass, entry)
+    hub = LscTuyaHub(hass, entry)
     if not await hub.async_setup():
         return False
 
@@ -105,8 +105,8 @@ async def async_register_services(hass: HomeAssistant):
         handle_get_image_url
     )
 
-class LcsTuyaHub:
-    """Hub for LCS Tuya Doorbell communication."""
+class LscTuyaHub:
+    """Hub for LSC Tuya Doorbell communication."""
     
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
         from .network import async_scan_network

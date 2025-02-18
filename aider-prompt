@@ -1,6 +1,6 @@
-# Home Assistant Integration for LCS/Tuya Doorbell
+# Home Assistant Integration for LSC/Tuya Doorbell
 
-Create a Home Assistant integration that adds support for LCS branded Tuya doorbells sold by Action stores in the Netherlands. I've already implemented this for Homey in JavaScript (pasted for reference) and now need a proper Home Assistant integration.
+Create a Home Assistant integration that adds support for LSC branded Tuya doorbells sold by Action stores in the Netherlands. I've already implemented this for Homey in JavaScript (pasted for reference) and now need a proper Home Assistant integration.
 
 ## Technical Details:
 - Tuya API Version: 3.3
@@ -17,11 +17,11 @@ Create a Home Assistant integration that adds support for LCS branded Tuya doorb
    - Doorbell button press (DPS 185)
    - Motion detection (DPS 115)
 3. Create corresponding Home Assistant events for each:
-   - `lcs_tuya_doorbell_button_press`
-   - `lcs_tuya_doorbell_motion`
+   - `lsc_tuya_doorbell_button_press`
+   - `lsc_tuya_doorbell_motion`
 4. Support configuration via YAML with multiple devices:
    ```yaml
-   lcs_tuya_doorbell:
+   lsc_tuya_doorbell:
      devices:
        - name: Front Door
          device_id: YOUR_DEVICE_ID

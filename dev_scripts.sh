@@ -13,14 +13,14 @@ function install_deps() {
 function validate_integration() {
     echo "Validating integration..."
     hassfest .
-    python3 -m script.hassfest -p custom_components/lcs_tuya_doorbell
+    python3 -m script.hassfest -p custom_components/lsc_tuya_doorbell
     hass --script check_config --config "$HA_CONFIG_DIR"
 }
 
 function setup_environment() {
     echo "Setting up development environment..."
     mkdir -p "$HA_CONFIG_DIR/custom_components"
-    ln -sf "$REPO_ROOT/custom_components/lcs_tuya_doorbell" "$HA_CONFIG_DIR/custom_components/lcs_tuya_doorbell"
+    ln -sf "$REPO_ROOT/custom_components/lsc_tuya_doorbell" "$HA_CONFIG_DIR/custom_components/lsc_tuya_doorbell"
     
     if [ ! -f "$HA_CONFIG_DIR/configuration.yaml" ]; then
         cat > "$HA_CONFIG_DIR/configuration.yaml" <<EOL
@@ -29,9 +29,9 @@ default_config:
 logger:
   default: info
   logs:
-    custom_components.lcs_tuya_doorbell: debug
+    custom_components.lsc_tuya_doorbell: debug
 
-lcs_tuya_doorbell:
+lsc_tuya_doorbell:
   devices:
     - name: "Test Doorbell"
       device_id: "your_device_id"
@@ -48,11 +48,11 @@ function run_hass() {
 
 function run_tests() {
     echo "Running tests..."
-    pytest tests/components/lcs_tuya_doorbell/ --cov=custom_components/lcs_tuya_doorbell
+    pytest tests/components/lsc_tuya_doorbell/ --cov=custom_components/lsc_tuya_doorbell
 }
 
 function show_help() {
-    echo "Development Script for LCS Tuya Doorbell Integration"
+    echo "Development Script for LSC Tuya Doorbell Integration"
     echo "Usage: $0 [command]"
     echo ""
     echo "Commands:"

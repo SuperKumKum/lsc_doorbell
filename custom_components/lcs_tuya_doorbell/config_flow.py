@@ -13,8 +13,8 @@ from .const import (
     CONF_LAST_IP
 )
 
-class LcsTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for LCS Tuya Doorbell."""
+class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for LSC Tuya Doorbell."""
     
     VERSION = 1
 
