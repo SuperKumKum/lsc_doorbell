@@ -8,7 +8,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, Event
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from datetime import timedelta
 
 from .const import (
     DOMAIN,
@@ -133,6 +134,7 @@ class LcsTuyaHub:
             _LOGGER.info("Connected to %s", config[CONF_NAME])
             self._reconnect_delay = 10
             self._start_listener()
+            self._start_heartbeat()
         except Exception as e:
             _LOGGER.error("Connection failed: %s", str(e))
             self._schedule_reconnect()
@@ -205,3 +207,53 @@ class LcsTuyaHub:
     async def _async_reconnect(self, _):
         """Reconnect to the device."""
         await self._async_connect()
+
+    async def _test_connection(self, host: str, port: int) -> bool:
+        """Test if we can connect to the device."""
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=3
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except Exception as e:
+            _LOGGER.debug("Connection test failed for %s:%s: %s", host, port, str(e))
+            return False
+
+    async def _rediscover_ip(self) -> str:
+        """Rediscover device IP using MAC address."""
+        config = self.entry.data
+        if not config.get(CONF_MAC):
+            _LOGGER.warning("Cannot rediscover device without MAC address")
+            return None
+
+        _LOGGER.info("Starting network scan for MAC %s", config[CONF_MAC])
+        devices = await self._async_scan_network(port=config[CONF_PORT])
+        
+        for ip, mac in devices:
+            if mac.lower() == config[CONF_MAC].lower():
+                _LOGGER.info("Found device at new IP: %s", ip)
+                return ip
+        
+        _LOGGER.warning("Device not found in network scan")
+        return None
+
+    def _start_heartbeat(self):
+        """Start periodic heartbeat monitoring."""
+        from homeassistant.helpers.event import async_track_time_interval
+        
+        def _handle_heartbeat(_):
+            """Handle heartbeat interval."""
+            _LOGGER.debug("Sending heartbeat to device")
+            try:
+                self.device.heartbeat()
+            except Exception as e:
+                _LOGGER.warning("Heartbeat failed: %s", str(e))
+        
+        async_track_time_interval(
+            self.hass,
+            _handle_heartbeat,
+            timedelta(seconds=60)
+        )
