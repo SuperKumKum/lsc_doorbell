@@ -12,7 +12,7 @@ function install_deps() {
 
 function validate_integration() {
     echo "Validating integration..."
-    hassfest .
+    python3 -m script.hassfest .
     python3 -m script.hassfest -p custom_components/lsc_tuya_doorbell
     hass --script check_config --config "$HA_CONFIG_DIR"
 }
@@ -48,6 +48,8 @@ function run_hass() {
 
 function run_tests() {
     echo "Running tests..."
+    pip install pytest pytest-homeassistant --break-system-packages
+    mkdir -p tests/components/lsc_tuya_doorbell
     pytest tests/components/lsc_tuya_doorbell/ --cov=custom_components/lsc_tuya_doorbell
 }
 
