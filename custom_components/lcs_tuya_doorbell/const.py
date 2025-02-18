@@ -18,3 +18,6 @@ DEFAULT_DPS_MAP = {
 ATTR_DEVICE_ID = "device_id"
 ATTR_IMAGE_DATA = "image_data"
 ATTR_TIMESTAMP = "timestamp"
+SERVICE_GET_IMAGE_URL = "get_image_url"
+DEFAULT_BUCKET = "ty-us-storage30-pic"
+SENSOR_TYPES = ["motion", "button", "status"]

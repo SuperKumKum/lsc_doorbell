@@ -1,0 +1,11 @@
+get_image_url:
+  description: Generate full image URL from path
+  fields:
+    path:
+      description: Image path from event payload
+      example: "/acc84e-53404544-pp01e25a0ef823011882/detect/1739487304.jpeg"
+      required: true
+  response:
+    url:
+      description: Full image URL
+      type: string
