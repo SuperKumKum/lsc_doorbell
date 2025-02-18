@@ -1,9 +1,9 @@
 {
   "domain": "lcs_tuya_doorbell",
   "name": "LCS Tuya Doorbell",
-  "documentation": "https://github.com/yourusername/hacs-lcs-tuya-doorbell",
-  "issue_tracker": "https://github.com/yourusername/hacs-lcs-tuya-doorbell/issues",
-  "codeowners": ["@yourusername"],
+  "documentation": "https://github.com/jurgenmahn/ha_tuya_doorbell",
+  "issue_tracker": "https://github.com/jurgenmahn/ha_tuya_doorbell/issues",
+  "codeowners": ["@jurgenmahn"],
   "requirements": ["tinytuya==1.12.3"],
   "config_flow": true,
   "version": "1.0.0",
