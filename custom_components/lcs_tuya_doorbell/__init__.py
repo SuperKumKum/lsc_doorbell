@@ -18,6 +18,7 @@ from .const import (
     CONF_HOST,
     CONF_PORT,
     CONF_MAC,
+    CONF_LAST_IP,
     CONF_DPS_MAP,
     DEFAULT_PORT,
     DEFAULT_DPS_MAP,
