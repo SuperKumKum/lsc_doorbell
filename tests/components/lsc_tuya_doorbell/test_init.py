@@ -8,6 +8,7 @@ async def test_basic_setup(hass: HomeAssistant):
     """Test basic setup of the integration."""
     entry = ConfigEntry(
         version=1,
+        minor_version=1,
         domain="lsc_tuya_doorbell",
         title="Test Doorbell",
         data={
@@ -18,6 +19,7 @@ async def test_basic_setup(hass: HomeAssistant):
         },
         source="user",
         options={},
-        unique_id="eb3b64e26aad0ee4c8b7vg"
+        unique_id="eb3b64e26aad0ee4c8b7vg",
+        discovery_keys=None
     )
     assert await async_setup_entry(hass, entry) is True
