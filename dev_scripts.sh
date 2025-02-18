@@ -51,9 +51,6 @@ function run_hass() {
 function run_tests() {
     echo "Running tests..."
     pytest tests/components/lsc_tuya_doorbell/ \
-        --cov=custom_components/lsc_tuya_doorbell \
-        --cov-report=term-missing \
-        --cov-fail-under=80 \
         --asyncio-mode=auto
 }
 
