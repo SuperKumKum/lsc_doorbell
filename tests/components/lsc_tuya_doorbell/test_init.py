@@ -15,7 +15,8 @@ async def test_basic_setup(hass: HomeAssistant):
             "name": "Test Doorbell",
             "device_id": "eb3b64e26aad0ee4c8b7vg",
             "local_key": "41357a04f9fafa62",
-            "host": "192.168.113.8"
+            "host": "192.168.113.8",
+            "port": 6668
         },
         source="user",
         options={},
