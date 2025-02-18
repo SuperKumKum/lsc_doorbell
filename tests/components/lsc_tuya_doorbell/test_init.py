@@ -12,12 +12,12 @@ async def test_basic_setup(hass: HomeAssistant):
         title="Test Doorbell",
         data={
             "name": "Test Doorbell",
-            "device_id": "test123",
-            "local_key": "testkey123",
-            "host": "192.168.1.100"
+            "device_id": "eb3b64e26aad0ee4c8b7vg",
+            "local_key": "41357a04f9fafa62",
+            "host": "192.168.113.11"
         },
         source="user",
         options={},
-        unique_id="test123"
+        unique_id="eb3b64e26aad0ee4c8b7vg"
     )
     assert await async_setup_entry(hass, entry) is True
