@@ -4,6 +4,6 @@ netifaces==0.11.0
 
 # Development/testing
 flake8>=7.0.0
-homeassistant[dev]==2025.2.4  # Match target HA version
+homeassistant[dev]==2025.1.4  # Match target HA version
 pytest==8.3.1
 pytest-asyncio==0.23.7
