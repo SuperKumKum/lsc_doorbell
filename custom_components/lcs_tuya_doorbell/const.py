@@ -6,6 +6,7 @@ EVENT_MOTION_DETECT = "lcs_tuya_doorbell_motion"
 
 CONF_LOCAL_KEY = "local_key"
 CONF_MAC = "mac"
+CONF_LAST_IP = "last_ip"
 CONF_DPS_MAP = "dps_map"
 
 DEFAULT_PORT = 6668

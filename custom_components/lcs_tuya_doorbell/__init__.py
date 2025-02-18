@@ -42,6 +42,8 @@ CONFIG_SCHEMA = vol.Schema({
                 vol.Optional(CONF_HOST): cv.string,
                 vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
                 vol.Optional(CONF_DPS_MAP, default=DEFAULT_DPS_MAP): dict,
+                vol.Optional(CONF_MAC): cv.string,
+                vol.Optional(CONF_LAST_IP): cv.string,
             }]
         )
     })
@@ -80,6 +82,8 @@ class LcsTuyaHub:
     """Hub for LCS Tuya Doorbell communication."""
     
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
+        from .network import async_scan_network
+        self._async_scan_network = async_scan_network
         self.hass = hass
         self.entry = entry
         self.device = None
@@ -93,13 +97,31 @@ class LcsTuyaHub:
         return True
 
     async def _async_connect(self):
-        """Connect to the Tuya device."""
+        """Connect to the Tuya device with automatic IP rediscovery."""
         from tinytuya import Device
 
         config = self.entry.data
+        host = config.get(CONF_HOST) or config.get(CONF_LAST_IP)
+        
+        # If no host or connection fails, try network scan
+        if not host or not await self._test_connection(host, config[CONF_PORT]):
+            _LOGGER.info("No valid IP, starting network scan...")
+            host = await self._rediscover_ip()
+            
+            if not host:
+                _LOGGER.error("Device rediscovery failed")
+                self._schedule_reconnect()
+                return
+                
+            # Update config with new IP
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={**config, CONF_LAST_IP: host}
+            )
+
         self.device = Device(
             dev_id=config[CONF_DEVICE_ID],
-            address=config.get(CONF_HOST, 'auto'),
+            address=host,
             local_key=config[CONF_LOCAL_KEY],
             port=config[CONF_PORT],
             version=3.3
