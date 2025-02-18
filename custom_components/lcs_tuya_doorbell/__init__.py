@@ -78,7 +78,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         return False
 
     hass.data[DOMAIN][entry.entry_id] = hub
+        
+    # Register services
+    await async_register_services(hass)
+        
+    # Set up sensor platform
+    hass.async_create_task(
+        hass.config_entries.async_forward_entry_setup(entry, "sensor")
+    )
+        
     return True
+
+async def async_register_services(hass: HomeAssistant):
+    """Register custom services."""
+    async def handle_get_image_url(call):
+        """Handle get_image_url service call."""
+        path = call.data.get("path")
+        bucket = call.data.get("bucket", DEFAULT_BUCKET)
+        return {"url": f"https://{bucket}.oss-us-west-1.aliyuncs.com{path}"}
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_IMAGE_URL,
+        handle_get_image_url
+    )
 
 class LcsTuyaHub:
     """Hub for LCS Tuya Doorbell communication."""
