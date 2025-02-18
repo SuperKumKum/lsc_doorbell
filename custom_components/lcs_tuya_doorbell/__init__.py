@@ -27,7 +27,9 @@ from .const import (
     EVENT_MOTION_DETECT,
     ATTR_DEVICE_ID,
     ATTR_IMAGE_DATA,
-    ATTR_TIMESTAMP
+    ATTR_TIMESTAMP,
+    SERVICE_GET_IMAGE_URL,
+    DEFAULT_BUCKET
 )
 from datetime import datetime
 
