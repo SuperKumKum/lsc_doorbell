@@ -6,6 +6,7 @@ from .const import (
     CONF_NAME,
     CONF_DEVICE_ID,
     CONF_LOCAL_KEY,
+    CONF_HOST,
     CONF_PORT,
     DEFAULT_PORT,
     CONF_MAC,

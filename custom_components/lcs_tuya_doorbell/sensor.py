@@ -6,7 +6,9 @@ from .const import (
     EVENT_BUTTON_PRESS,
     EVENT_MOTION_DETECT,
     ATTR_DEVICE_ID,
-    ATTR_TIMESTAMP
+    ATTR_TIMESTAMP,
+    CONF_DEVICE_ID,
+    CONF_LAST_IP
 )
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
