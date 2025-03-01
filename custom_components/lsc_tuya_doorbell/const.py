@@ -11,8 +11,8 @@ CONF_DPS_MAP = "dps_map"
 
 DEFAULT_PORT = 6668
 DEFAULT_DPS_MAP = {
-    "button": 185,
-    "motion": 115
+    "button": "185",
+    "motion": "115"
 }
 
 ATTR_DEVICE_ID = "device_id"

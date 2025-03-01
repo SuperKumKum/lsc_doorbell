@@ -5,7 +5,15 @@ get_image_url:
       description: Image path from event payload
       example: "/acc84e-53404544-pp01e25a0ef823011882/detect/1739487304.jpeg"
       required: true
+    bucket:
+      description: Storage bucket name (defaults to ty-us-storage30-pic)
+      example: "ty-us-storage30-pic"
+      required: false
   response:
     url:
       description: Full image URL
       type: string
+
+reload:
+  name: Reload
+  description: Reload the LSC Tuya Doorbell integration with latest code

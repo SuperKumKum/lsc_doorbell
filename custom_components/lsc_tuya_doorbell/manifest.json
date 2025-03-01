@@ -4,8 +4,8 @@
   "documentation": "https://github.com/jurgenmahn/ha_tuya_doorbell",
   "issue_tracker": "https://github.com/jurgenmahn/ha_tuya_doorbell/issues",
   "codeowners": ["@jurgenmahn"],
-  "requirements": ["tinytuya==1.12.3"],
+  "requirements": ["cryptography>=41.0.0"],
   "config_flow": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "iot_class": "local_push"
 }

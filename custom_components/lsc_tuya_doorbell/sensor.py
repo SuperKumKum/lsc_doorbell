@@ -1,5 +1,4 @@
-from homeassistant.components.sensor import SensorEntity
-from homeassistant.helpers.restore_state import RestoreSensor
+from homeassistant.components.sensor import SensorEntity, RestoreEntity
 from homeassistant.core import callback
 from .const import (
     DOMAIN,
@@ -24,7 +23,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     
     async_add_entities(sensors)
 
-class LscTuyaMotionSensor(RestoreSensor):
+class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
     """Representation of a Motion Detection Sensor."""
     
     def __init__(self, hub, device_id):
@@ -53,10 +52,19 @@ class LscTuyaMotionSensor(RestoreSensor):
         }
         
     async def async_added_to_hass(self):
+        """When entity is added to hass."""
         await super().async_added_to_hass()
+        
+        # Restore previous state
+        last_state = await self.async_get_last_state()
+        if last_state:
+            self._state = last_state.state
+        else:
+            self._state = "Idle"
         
         @callback
         def motion_handler(event):
+            """Handle motion event."""
             self._state = "Detected"
             self._last_trigger = event.data[ATTR_TIMESTAMP]
             self.async_write_ha_state()
@@ -111,7 +119,7 @@ class LscTuyaStatusSensor(SensorEntity):
         
     @property
     def state(self):
-        return "Connected" if self._hub.device else "Disconnected"
+        return "Connected" if self._hub._protocol else "Disconnected"
         
     @property
     def extra_state_attributes(self):
