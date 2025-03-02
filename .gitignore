@@ -78,7 +78,6 @@ log/
 logs/
 
 # Custom files we want to ignore for this project
-test_doorbell.py
 *.cpython-*.pyc
 config/
 aider-prompt
