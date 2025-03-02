@@ -517,14 +517,15 @@ class LscTuyaHub:
             # Update the status sensor to reflect the new heartbeat time
             if DOMAIN in self.hass.data and self.entry.entry_id in self.hass.data[DOMAIN]:
                 # Find the status sensor entity and update its state
-                for entity_id in self.hass.states.async_entity_ids("sensor"):
-                    if entity_id.startswith(f"sensor.lsc_tuya_status_") and self.entry.data[CONF_DEVICE_ID][-4:] in entity_id:
-                        _LOGGER.debug("Requesting update for sensor %s", entity_id)
-                        await self.hass.services.async_call(
-                            "homeassistant", "update_entity", 
-                            {"entity_id": entity_id}, blocking=False
-                        )
-                        break
+                device_id_suffix = self.entry.data[CONF_DEVICE_ID][-4:]
+                entity_id = f"sensor.lsc_tuya_status_{device_id_suffix}"
+                
+                # Update the sensor entity 
+                _LOGGER.debug("Requesting update for sensor %s", entity_id)
+                await self.hass.services.async_call(
+                    "homeassistant", "update_entity", 
+                    {"entity_id": entity_id}, blocking=False
+                )
             
             return True
         except Exception as e:

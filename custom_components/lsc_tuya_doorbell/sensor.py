@@ -27,20 +27,25 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
     """Representation of a Motion Detection Sensor."""
     
+    # Class-level constants
+    SENSOR_TYPE = "motion"
+    
     def __init__(self, hub, device_id):
         self._hub = hub
         self._device_id = device_id
         self._state = None
         self._last_trigger = None
-        self.entity_id = f"sensor.lsc_tuya_motion_{device_id[-4:]}"
+        
+        # Set entity ID based on sensor type defined at class level
+        self.entity_id = f"sensor.lsc_tuya_{self.SENSOR_TYPE}_{device_id[-4:]}"
         
     @property
     def name(self):
-        return f"LSC Tuya Motion {self._device_id[-4:]}"
+        return f"LSC Tuya {self.SENSOR_TYPE.title()} {self._device_id[-4:]}"
         
     @property
     def unique_id(self):
-        return f"{self._device_id}_motion"
+        return f"{self._device_id}_{self.SENSOR_TYPE}"
         
     @property
     def state(self):
@@ -85,13 +90,10 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
 class LscTuyaButtonSensor(LscTuyaMotionSensor):
     """Representation of a Doorbell Button Sensor."""
     
-    @property
-    def name(self):
-        return f"LSC Tuya Button {self._device_id[-4:]}"
-        
-    @property
-    def unique_id(self):
-        return f"{self._device_id}_button"
+    # Override the sensor type for this class
+    SENSOR_TYPE = "button"
+    
+    # No need to override name and unique_id as they now use the SENSOR_TYPE constant
         
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
@@ -112,13 +114,16 @@ class LscTuyaButtonSensor(LscTuyaMotionSensor):
 class LscTuyaStatusSensor(SensorEntity):
     """Device status sensor showing connection info."""
     
+    # Class-level constants
+    SENSOR_TYPE = "status"
+    
     def __init__(self, hub, device_id):
         self._hub = hub
         self._device_id = device_id
-        self._attr_name = f"LSC Tuya Status {device_id[-4:]}"
-        self._attr_unique_id = f"{device_id}_status"
+        self._attr_name = f"LSC Tuya {self.SENSOR_TYPE.title()} {device_id[-4:]}"
+        self._attr_unique_id = f"{device_id}_{self.SENSOR_TYPE}"
         self._attr_icon = "mdi:connection"
-        self.entity_id = f"sensor.lsc_tuya_status_{device_id[-4:]}"
+        self.entity_id = f"sensor.lsc_tuya_{self.SENSOR_TYPE}_{device_id[-4:]}"
         self._last_heartbeat = None
         
     @property
