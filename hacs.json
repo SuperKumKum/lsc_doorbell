@@ -1,0 +1,8 @@
+{
+    "name": "Local LSC Tuya Doorbell integration",
+    "content_in_root": false,
+    "render_readme": true,
+    "domains": ["binary_sensor", "sensor", "event"],
+    "iot_class": "local_polling",
+    "icon": "logo.png"
+  }
