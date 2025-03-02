@@ -1,6 +1,6 @@
 # LSC Tuya Doorbell Integration for Home Assistant
 
-![doorbell](https://github.com/jurgenmahn/ha_tuya_doorbell/icons/logo.png)
+![doorbell](https://github.com/jurgenmahn/ha_tuya_doorbell/blob/main/icons/logo.png)
 
 **Answer your door with local control and full privacy!** This Home Assistant integration connects directly to your LSC Smart Connect video doorbell without any cloud dependencies, giving you complete control and privacy.
 
