@@ -167,11 +167,25 @@ class LscTuyaHub:
         self._reconnect_delay = 10
         self._max_reconnect_delay = 300
         self.last_heartbeat = None
+        self._heartbeat_timer = None
         self._listener = TuyaDoorbellListener(self)
 
     async def async_setup(self):
         """Set up the hub."""
+        # Connect to the device
         await self._async_connect()
+        
+        # Set up a periodic heartbeat check
+        async def check_heartbeat(now=None):
+            """Check if heartbeats are being received."""
+            if self._protocol:
+                # Try sending a heartbeat if it's been more than 60 seconds
+                await self.heartbeat()
+                
+        self._heartbeat_timer = async_track_time_interval(
+            self.hass, check_heartbeat, timedelta(seconds=60)
+        )
+                
         return True
 
     async def _async_connect(self):
@@ -238,8 +252,9 @@ class LscTuyaHub:
             _LOGGER.info("Connected to %s using PyTuya", config[CONF_NAME])
             self._reconnect_delay = 10
             
-            # Start heartbeat
+            # Start heartbeat and record initial timestamp
             self._protocol.start_heartbeat()
+            self.last_heartbeat = datetime.now().isoformat()
             
             # Try to get initial status
             status = None
@@ -495,8 +510,22 @@ class LscTuyaHub:
             
         try:
             result = await self._protocol.heartbeat()
+            # Update the heartbeat timestamp
             self.last_heartbeat = datetime.now().isoformat()
-            _LOGGER.debug("Heartbeat result: %s", result)
+            _LOGGER.debug("Heartbeat result: %s, timestamp: %s", result, self.last_heartbeat)
+            
+            # Update the status sensor to reflect the new heartbeat time
+            if DOMAIN in self.hass.data and self.entry.entry_id in self.hass.data[DOMAIN]:
+                # Find the status sensor entity and update its state
+                for entity_id in self.hass.states.async_entity_ids("sensor"):
+                    if entity_id.startswith(f"sensor.lsc_tuya_status_") and self.entry.data[CONF_DEVICE_ID][-4:] in entity_id:
+                        _LOGGER.debug("Requesting update for sensor %s", entity_id)
+                        await self.hass.services.async_call(
+                            "homeassistant", "update_entity", 
+                            {"entity_id": entity_id}, blocking=False
+                        )
+                        break
+            
             return True
         except Exception as e:
             _LOGGER.warning("Heartbeat failed: %s", str(e))

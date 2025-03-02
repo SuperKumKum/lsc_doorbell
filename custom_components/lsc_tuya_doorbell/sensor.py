@@ -119,19 +119,32 @@ class LscTuyaStatusSensor(SensorEntity):
         self._attr_unique_id = f"{device_id}_status"
         self._attr_icon = "mdi:connection"
         self.entity_id = f"sensor.lsc_tuya_status_{device_id[-4:]}"
+        self._last_heartbeat = None
         
     @property
     def state(self):
         return "Connected" if self._hub._protocol else "Disconnected"
+    
+    async def async_update(self):
+        """Fetch latest heartbeat time when entity is updated."""
+        self._last_heartbeat = self._hub.last_heartbeat
+        
+    @property
+    def should_poll(self):
+        """Return True if entity should be polled for state."""
+        return True
         
     @property
     def extra_state_attributes(self):
         # Get current device IP (may have been rediscovered)
         host = self._hub.entry.data.get(CONF_HOST) or self._hub.entry.data.get(CONF_LAST_IP)
         
+        # Get the latest heartbeat time - default to the cached value or Unknown
+        last_heartbeat = self._hub.last_heartbeat or self._last_heartbeat or "Unknown"
+        
         return {
             "ip_address": host if host else "Unknown",
-            "last_heartbeat": self._hub.last_heartbeat if self._hub.last_heartbeat else "Unknown",
+            "last_heartbeat": last_heartbeat,
             "device_id": self._device_id,
             "connection_status": "Active" if self._hub._protocol else "Disconnected"
         }

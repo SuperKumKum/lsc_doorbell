@@ -20,6 +20,8 @@ from .const import (
     DEFAULT_PORT,
     CONF_MAC,
     CONF_LAST_IP,
+    CONF_DPS_MAP,
+    DEFAULT_DPS_MAP,
     RESULT_SUCCESS,
     RESULT_AUTH_FAILED,
     RESULT_NOT_FOUND,
