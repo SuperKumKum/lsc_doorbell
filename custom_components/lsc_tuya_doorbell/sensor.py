@@ -85,19 +85,51 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
         self._state = "Idle"
         self.async_write_ha_state()
 
-class LscTuyaButtonSensor(LscTuyaMotionSensor):
+class LscTuyaButtonSensor(SensorEntity, RestoreEntity):
     """Representation of a Doorbell Button Sensor."""
     
-    # Override the sensor type for this class
+    # Define the sensor type
     SENSOR_TYPE = "button"
     
-    # No need to override name and unique_id as they now use the SENSOR_TYPE constant
+    def __init__(self, hub, device_id):
+        self._hub = hub
+        self._device_id = device_id
+        self._state = None
+        self._last_trigger = None
+        
+    @property
+    def name(self):
+        return f"LSC Tuya {self.SENSOR_TYPE.title()} {self._device_id[-4:]}"
+        
+    @property
+    def unique_id(self):
+        return f"{self._device_id}_{self.SENSOR_TYPE}"
+        
+    @property
+    def state(self):
+        return self._state
+        
+    @property
+    def extra_state_attributes(self):
+        return {
+            "last_triggered": self._last_trigger,
+            "device_id": self._device_id
+        }
         
     async def async_added_to_hass(self):
+        """When entity is added to hass."""
         await super().async_added_to_hass()
+        
+        # Restore previous state
+        last_state = await self.async_get_last_state()
+        if last_state:
+            self._state = last_state.state
+        else:
+            self._state = "Idle"
         
         @callback
         def button_handler(event):
+            """Handle button press event."""
             self._state = "Pressed"
             self._last_trigger = event.data[ATTR_TIMESTAMP]
             self.async_write_ha_state()
@@ -108,6 +140,10 @@ class LscTuyaButtonSensor(LscTuyaMotionSensor):
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_BUTTON_PRESS, button_handler)
         )
+        
+    def _reset_state(self):
+        self._state = "Idle"
+        self.async_write_ha_state()
 
 class LscTuyaStatusSensor(SensorEntity):
     """Device status sensor showing connection info."""

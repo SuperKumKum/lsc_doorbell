@@ -29,6 +29,8 @@ from .const import (
     DEFAULT_DPS_MAP,
     EVENT_BUTTON_PRESS,
     EVENT_MOTION_DETECT,
+    EVENT_DEVICE_CONNECTED,
+    EVENT_DEVICE_DISCONNECTED,
     ATTR_DEVICE_ID,
     ATTR_IMAGE_DATA,
     ATTR_TIMESTAMP,
@@ -184,6 +186,17 @@ class TuyaDoorbellListener:
         # Update the last disconnect time
         self._last_disconnect_time = now
         
+        # Fire a disconnection event
+        config = self.hub.entry.data
+        self.hub.hass.bus.async_fire(
+            EVENT_DEVICE_DISCONNECTED, 
+            {
+                ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
+                ATTR_TIMESTAMP: datetime.now().isoformat(),
+                "name": config[CONF_NAME]
+            }
+        )
+        
         _LOGGER.warning("Disconnected from device, scheduling reconnect")
         self.hub.hass.async_create_task(self.hub._schedule_reconnect())
 
@@ -294,6 +307,18 @@ class LscTuyaHub:
                 # Start heartbeat and record initial timestamp
                 self._protocol.start_heartbeat()
                 self.last_heartbeat = datetime.now().isoformat()
+                
+                # Fire a connection event
+                self.hass.bus.async_fire(
+                    EVENT_DEVICE_CONNECTED, 
+                    {
+                        ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
+                        ATTR_TIMESTAMP: datetime.now().isoformat(),
+                        "host": host,
+                        "name": config[CONF_NAME]
+                    }
+                )
+                _LOGGER.info("Fired device connected event")
                 
                 # Update all sensors for this device
                 device_id = config[CONF_DEVICE_ID]

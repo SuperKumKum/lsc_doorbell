@@ -3,6 +3,8 @@ from homeassistant.const import CONF_NAME, CONF_HOST, CONF_DEVICE_ID, CONF_PORT
 DOMAIN = "lsc_tuya_doorbell"
 EVENT_BUTTON_PRESS = "lsc_tuya_doorbell_button_press"
 EVENT_MOTION_DETECT = "lsc_tuya_doorbell_motion"
+EVENT_DEVICE_CONNECTED = "lsc_tuya_doorbell_connected"
+EVENT_DEVICE_DISCONNECTED = "lsc_tuya_doorbell_disconnected"
 
 CONF_LOCAL_KEY = "local_key"
 CONF_MAC = "mac"

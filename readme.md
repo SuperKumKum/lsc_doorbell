@@ -62,6 +62,8 @@ The integration fires these events you can use in your automations:
 
 - `lsc_tuya_doorbell_button_press`: When someone presses the doorbell button
 - `lsc_tuya_doorbell_motion`: When motion is detected
+- `lsc_tuya_doorbell_connected`: When the doorbell device connects to Home Assistant
+- `lsc_tuya_doorbell_disconnected`: When the doorbell device disconnects from Home Assistant
 
 ### Example Automation: Flash Lights When Doorbell Pressed
 
@@ -80,6 +82,24 @@ automation:
         data:
           title: "Doorbell"
           message: "Someone is at the door!"
+```
+
+### Example Automation: Get Notified When Doorbell Disconnects
+
+```yaml
+automation:
+  - alias: "Doorbell Disconnection Alert"
+    trigger:
+      platform: event
+      event_type: lsc_tuya_doorbell_disconnected
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Doorbell Alert"
+          message: "Your doorbell has disconnected from Home Assistant"
+          data:
+            channel: "Doorbell Status"
+            importance: high
 ```
 
 ## 🔍 Troubleshooting
