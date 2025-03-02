@@ -1,0 +1,38 @@
+{
+  "title": "LSC Tuya Doorbell",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add LSC Tuya Doorbell",
+        "data": {
+          "name": "Name",
+          "device_id": "Device ID",
+          "local_key": "Local Key",
+          "host": "IP Address or Subnet (e.g. 192.168.1.0/24)",
+          "port": "Port"
+        },
+        "description": "Enter your Tuya doorbell information. For the IP Address, you can enter a specific IP or a subnet (e.g. 192.168.1.0/24) to automatically scan for devices."
+      },
+      "discover": {
+        "title": "Select Device",
+        "data": {
+          "device_ip": "Select a device",
+          "action": "Action"
+        },
+        "description": "Found {device_count} Tuya devices in subnet {subnet}. Select a device to add or choose an action below."
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device",
+      "invalid_auth": "Invalid device ID or local key",
+      "host_required": "IP address or subnet is required",
+      "invalid_subnet": "Invalid subnet format. Use CIDR notation (e.g. 192.168.1.0/24)",
+      "subnet_too_large": "Subnet must be /24 or smaller for efficient scanning",
+      "no_devices_found": "No devices found with the specified port open in this subnet",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Device already configured"
+    }
+  }
+}

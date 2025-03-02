@@ -1,94 +1,121 @@
 # LSC Tuya Doorbell Integration for Home Assistant
 
-A Home Assistant custom component for doorbells sold at Action stores in the Netherlands.
-This integration supports LSC Smart Connect video doorbells that use the Tuya platform.
+![doorbell](https://github.com/jurgenmahn/ha_tuya_doorbell/assets/logo.png)
 
-## Features
+**Answer your door with local control and full privacy!** This Home Assistant integration connects directly to your LSC Smart Connect video doorbell without any cloud dependencies, giving you complete control and privacy.
 
-- Detects doorbell button presses (DP 185)
-- Detects motion events (DP 115)
-- Provides sensor entities for motion, button press and connection status
-- Fires events you can use in automations
-- Uses local Tuya protocol - no cloud connection required
+Available at Action stores across the Netherlands and other European countries, these affordable smart doorbells can now be fully integrated with your Home Assistant setup - no cloud subscription required!
 
-## Installation
+## 🚀 Features
 
-### HACS (recommended)
+- **Local Control**: Direct communication with your doorbell - no cloud dependency
+- **Real-time Events**: Instant notification of doorbell presses and motion detection
+- **Complete Privacy**: All data stays within your home network
+- **Automatic Discovery**: Finds your doorbell on the network even if its IP changes
+- **Smart Automations**: Trigger lights, announcements, and other actions when someone's at your door
+- **Reliable Connection**: Maintains persistent connection with automatic reconnection
+
+## 📋 Requirements
+
+- Home Assistant (Core 2022.5.0 or newer)
+- LSC Smart Connect Video Doorbell with Tuya chipset
+- Doorbell's Device ID and Local Key (obtained from Tuya Developer platform or using Tuya Cloudcutter)
+
+## 📲 Installation
+
+### HACS Installation (Recommended)
 
 1. Make sure you have [HACS](https://hacs.xyz/) installed
-2. Add this repository as a custom repository in HACS
-3. Install the "LSC Tuya Doorbell" integration from HACS
-4. Restart Home Assistant
+2. In HACS, go to "Integrations" → click the three dots → "Custom repositories"
+3. Add `https://github.com/jurgenmahn/ha_tuya_doorbell` as a custom repository (Category: Integration)
+4. Click "Download" next to the LSC Tuya Doorbell integration
+5. Restart Home Assistant
 
-### Manual installation
+### Manual Installation
 
-1. Copy the `custom_components/lsc_tuya_doorbell` directory to your Home Assistant `custom_components` directory
-2. Restart Home Assistant
+1. Download the latest release
+2. Copy the `custom_components/lsc_tuya_doorbell` directory to your Home Assistant `custom_components` directory
+3. Restart Home Assistant
 
-## Configuration
+## ⚙️ Configuration
 
-You can add this integration through the Home Assistant UI:
+Setting up is easy through the Home Assistant UI:
 
-1. Go to Configuration > Integrations
-2. Click on "+ Add Integration"
-3. Search for "LSC Tuya Doorbell"
-4. Follow the configuration steps to add your doorbell device
+1. Go to **Settings** → **Devices & Services**
+2. Click the **"+ Add Integration"** button
+3. Search for "LSC Tuya Doorbell" and select it
+4. Enter the following information:
+   - **Name**: A friendly name for your doorbell
+   - **Device ID**: Your doorbell's Tuya device ID
+   - **Local Key**: Your doorbell's local key
+   - **IP Address**: Your doorbell's IP address or a subnet to scan (e.g., 192.168.1.0/24)
+   - **Port**: The port your doorbell uses (default: 6668)
 
-### Configuration Parameters
+The integration will:
+1. Connect directly to your doorbell using the local Tuya protocol
+2. Create sensors for motion detection, doorbell button presses, and connection status
+3. Set up event triggers you can use in your automations
 
-- **Device ID**: The Tuya device ID (can be obtained from the Tuya developer platform or tools like Tuya Cloudcutter)
-- **Local Key**: The Tuya device local key (can be obtained from the Tuya developer platform or Tuya Cloudcutter)
-- **Host**: IP address of your doorbell (optional - will be discovered automatically if not provided)
-- **MAC Address**: MAC address of your doorbell (for automatic IP rediscovery if the IP changes)
+## 🔄 Working with Events
 
-## Implementation Details
+The integration fires these events you can use in your automations:
 
-This integration uses a custom PyTuya library to connect to Tuya devices locally. It establishes a persistent connection to the doorbell and listens for events like button presses and motion detection.
+- `lsc_tuya_doorbell_button_press`: When someone presses the doorbell button
+- `lsc_tuya_doorbell_motion`: When motion is detected
 
-Key features of the implementation:
+### Example Automation: Flash Lights When Doorbell Pressed
 
-- Async communication with the Tuya device
-- Automatic reconnection with exponential backoff
-- IP address rediscovery if the doorbell's IP changes
-- Support for protocol version 3.3 which is common for these devices
-- Comprehensive logging for debugging
-
-## Events
-
-The integration fires the following events that you can use in your automations:
-
-- `lsc_tuya_doorbell_button_press`: Fired when someone presses the doorbell button
-- `lsc_tuya_doorbell_motion`: Fired when motion is detected
-
-Each event includes:
-- `device_id`: The Tuya device ID
-- `image_data`: Data payload from the device, which may include image information
-- `timestamp`: The time the event was detected
-
-## Troubleshooting
-
-- Enable debug logging for the component by adding the following to your `configuration.yaml`:
 ```yaml
-logger:
-  default: info
-  logs:
-    custom_components.lsc_tuya_doorbell: debug
+automation:
+  - alias: "Doorbell Press - Flash Lights"
+    trigger:
+      platform: event
+      event_type: lsc_tuya_doorbell_button_press
+    action:
+      - service: light.turn_on
+        entity_id: light.porch_light
+        data:
+          flash: short
+      - service: notify.mobile_app
+        data:
+          title: "Doorbell"
+          message: "Someone is at the door!"
 ```
-- Ensure your doorbell is on the same network as your Home Assistant instance
-- Make sure the device ID and local key are correct
-- Check if the correct port is being used (default is 6668)
 
-## Technical Details
+## 🔍 Troubleshooting
 
-The integration communicates with the doorbell device using the Tuya local API protocol version 3.3. It establishes a persistent connection to the device and listens for updates on specific datapoints:
+Having issues? Try these steps:
 
-- DP 185: Doorbell button press
-- DP 115: Motion detection
+- Enable debug logging by adding to your `configuration.yaml`:
+  ```yaml
+  logger:
+    default: info
+    logs:
+      custom_components.lsc_tuya_doorbell: debug
+  ```
+- Ensure your doorbell is on the same network as Home Assistant
+- Verify your device ID and local key are correct
+- Check if your doorbell is using the default port (6668)
+- If your doorbell disappears periodically, try setting a static IP for it in your router
 
-These datapoints may contain encoded data that includes information about the event and potentially links to images that were captured.
+## 🛠️ Technical Details
 
-## Credits
+This integration communicates with your doorbell using protocol version 3.3 of the Tuya local API. It establishes a persistent connection to listen for these specific datapoints:
 
-This integration was created by Jurgen Mahn and is based on:
-- PyTuya library for local Tuya device communication
-- Community research on the Tuya protocol
+- DP 185: Doorbell button press events
+- DP 115: Motion detection events
+
+The integration includes:
+- Automatic credential-based device rediscovery if the IP changes
+- Exponential backoff for reconnection attempts
+- Decoded JSON payloads from button presses and motion events
+
+## 📝 Credits
+
+Created by Jurgen Mahn with contributions from the Home Assistant community.
+
+Based on research on the Tuya protocol and adapted from various open-source Tuya communication libraries.
+
+## 📜 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

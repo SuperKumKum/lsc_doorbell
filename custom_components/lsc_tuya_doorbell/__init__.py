@@ -198,14 +198,19 @@ class LscTuyaHub:
             
             if not host:
                 _LOGGER.error("Device rediscovery failed")
-                self._schedule_reconnect()
+                self.hass.async_create_task(self._schedule_reconnect())
                 return
                 
             # Update config with new IP
             _LOGGER.info("Found device at new IP: %s, updating configuration", host)
+            
+            # Store both the original host value (might be a subnet) and the last discovered IP
+            updated_config = {**config, CONF_LAST_IP: host}
+            
+            # Update the config entry with the new data
             self.hass.config_entries.async_update_entry(
                 self.entry,
-                data={**config, CONF_LAST_IP: host}
+                data=updated_config
             )
 
         try:
@@ -237,6 +242,7 @@ class LscTuyaHub:
             self._protocol.start_heartbeat()
             
             # Try to get initial status
+            status = None
             try:
                 _LOGGER.debug("Getting initial device status...")
                 status = await self._protocol.status()
@@ -256,7 +262,8 @@ class LscTuyaHub:
         except Exception as e:
             _LOGGER.error("Connection failed: %s", str(e))
             _LOGGER.debug("Connection error details", exc_info=True)
-            self._schedule_reconnect()
+            # Schedule reconnect without awaiting since we're in an async function
+            self.hass.async_create_task(self._schedule_reconnect())
 
     async def _handle_dps_update(self, dp: str, value: Any):
         """Handle DPS update and fire events."""
@@ -267,8 +274,9 @@ class LscTuyaHub:
         _LOGGER.debug("Handling DPS update for DP %s with value type %s", dp, type(value))
         
         # Get expected DPs from config - make sure they're strings
-        button_dp = str(config[CONF_DPS_MAP].get('button', "185"))
-        motion_dp = str(config[CONF_DPS_MAP].get('motion', "115"))
+        dps_map = config.get(CONF_DPS_MAP, DEFAULT_DPS_MAP)
+        button_dp = str(dps_map.get('button', "185"))
+        motion_dp = str(dps_map.get('motion', "115"))
         
         _LOGGER.debug("Expected DPs - Button: %s, Motion: %s", button_dp, motion_dp)
 
@@ -382,7 +390,7 @@ class LscTuyaHub:
             _LOGGER.error("Unexpected error handling DP %s: %s", dp, str(e))
             _LOGGER.debug("Handler error details", exc_info=True)
 
-    def _schedule_reconnect(self):
+    async def _schedule_reconnect(self):
         """Schedule a reconnect with exponential backoff."""
         self._reconnect_delay = min(self._reconnect_delay * 2, self._max_reconnect_delay)
         _LOGGER.info("Scheduling reconnect in %s seconds", self._reconnect_delay)
@@ -425,21 +433,58 @@ class LscTuyaHub:
             return False
 
     async def _rediscover_ip(self) -> Optional[str]:
-        """Rediscover device IP using MAC address."""
+        """Rediscover device using ID and key."""
         config = self.entry.data
-        if not config.get(CONF_MAC):
-            _LOGGER.warning("Cannot rediscover device without MAC address")
+        device_id = config[CONF_DEVICE_ID]
+        local_key = config[CONF_LOCAL_KEY]
+        port = config.get(CONF_PORT, DEFAULT_PORT)
+        
+        _LOGGER.info("Starting network scan for device ID %s", device_id)
+        
+        # Scan the network for devices with the port open
+        devices = await self._async_scan_network(port=port)
+        
+        if not devices:
+            _LOGGER.warning("No devices found with port %s open during rediscovery", port)
             return None
-
-        _LOGGER.info("Starting network scan for MAC %s", config[CONF_MAC])
-        devices = await self._async_scan_network(port=config[CONF_PORT])
+            
+        _LOGGER.info("Found %d device(s) with port %s open, trying to connect to each", len(devices), port)
         
-        for ip, mac in devices:
-            if mac.lower() == config[CONF_MAC].lower():
-                _LOGGER.info("Found device at new IP: %s", ip)
-                return ip
+        # Try to connect to each device with our credentials
+        for ip, _ in devices:
+            _LOGGER.debug("Trying to connect to %s with provided credentials", ip)
+            try:
+                from .pytuya import connect
+                
+                # Try to connect and get status
+                protocol = await connect(
+                    ip,
+                    device_id,
+                    local_key,
+                    "3.3",  # Version
+                    False,  # Debug
+                    None,   # No listener for validation
+                    port=port,
+                    timeout=5
+                )
+                
+                try:
+                    # Try to get status
+                    status = await protocol.status()
+                    
+                    # If we got a valid status, this is our device
+                    if status is not None:
+                        _LOGGER.info("Found device at new IP: %s (matched by credentials)", ip)
+                        await protocol.close()
+                        return ip
+                except Exception:
+                    _LOGGER.debug("Failed to get status from %s", ip)
+                
+                await protocol.close()
+            except Exception as e:
+                _LOGGER.debug("Failed to connect to %s: %s", ip, str(e))
         
-        _LOGGER.warning("Device not found in network scan")
+        _LOGGER.error("Device not found in network scan")
         return None
 
     async def heartbeat(self) -> bool:
@@ -456,5 +501,6 @@ class LscTuyaHub:
         except Exception as e:
             _LOGGER.warning("Heartbeat failed: %s", str(e))
             _LOGGER.debug("Heartbeat exception details", exc_info=True)
-            await self._schedule_reconnect()
+            # Don't await here since we're in an async context
+            self.hass.async_create_task(self._schedule_reconnect())
             return False

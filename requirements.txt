@@ -1,5 +1,0 @@
-# Runtime dependencies
-tinytuya==1.12.3
-netifaces==0.11.0
-pycryptodome==3.19.0
-

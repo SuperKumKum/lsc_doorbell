@@ -1,18 +1,19 @@
 # LSC Tuya Doorbell Development Guidelines
 
+## Project Overview
+Home Assistant custom component for LSC Smart Connect video doorbells using the Tuya protocol.
+Communicates locally with doorbells to detect button presses and motion events without cloud connections.
+
 ## Development Commands
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirements.txt  # netifaces>=0.11.0
 
-# Install development dependencies (testing, linting)
+# Install development dependencies
 pip install pytest pytest-homeassistant-custom-component pylint flake8
 
-# Run pytest
-pytest tests/
-
-# Run specific test
-pytest tests/components/lsc_tuya_doorbell/test_init.py
+# Test direct device connection
+python test_doorbell.py --ip <doorbell_ip> --id <device_id> --key <local_key>
 
 # Lint code
 flake8 custom_components/
@@ -30,11 +31,8 @@ logger:
 # Monitor logs in real-time
 tail -f /config/home-assistant.log | grep lsc_tuya_doorbell
 
-# Test component communication with netcat
+# Test device connectivity
 nc -vz <doorbell_ip> 6668
-
-# Check network discovery
-python -c "import netifaces; print(netifaces.interfaces())"
 ```
 
 ## Code Style Guidelines
@@ -43,8 +41,13 @@ python -c "import netifaces; print(netifaces.interfaces())"
 - **Async**: All IO operations must be async with proper exception handling
 - **Constants**: Define in const.py, use UPPERCASE for constants
 - **Naming**: Use snake_case for variables/functions, PascalCase for classes
-- **Error Handling**: Catch specific exceptions, log appropriately with different levels
+- **Error Handling**: Catch specific exceptions, log appropriately
 - **Logging**: Use self._LOGGER with appropriate level (debug, info, warning, error)
 
 ## Project Structure
-This is a Home Assistant custom component that follows standard HA development patterns.
+- `__init__.py`: Component setup and initialization
+- `config_flow.py`: UI configuration flow
+- `const.py`: Constants and default values
+- `network.py`: Tuya device communication
+- `sensor.py`: Sensor entity implementation
+- `pytuya/`: Local implementation of Tuya protocol

@@ -231,6 +231,10 @@ class TuyaLoggingAdapter(logging.LoggerAdapter):
 
 class ContextualLogger:
     """Contextual logger adding device id to log points."""
+    
+    def warning(self, msg, *args, **kwargs):
+        """Log warning message."""
+        self.logger.warning(msg, *args, **kwargs)
 
     def __init__(self):
         """Initialize a new ContextualLogger."""
@@ -676,7 +680,12 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
         try:
             listener = self.listener and self.listener()
             if listener is not None:
-                listener.disconnected()
+                try:
+                    listener.disconnected()
+                except TypeError:
+                    self.warning("Disconnected callback not async, will use legacy mode")
+                    # Handling case where disconnected() is not async but is called from async context
+                    asyncio.create_task(listener.hub._schedule_reconnect())
         except Exception:  # pylint: disable=broad-except
             self.exception("Failed to call disconnected callback")
 

@@ -4,9 +4,9 @@ Create a Home Assistant integration that adds support for LSC branded Tuya doorb
 
 ## Technical Details:
 - Tuya API Version: 3.3
-- Device ID: eb3b64e26aad0ee4c8b7vg
-- Local Key: 41357a04f9fafa62
-- IP: 192.168.113.11 (default)
+- Device ID: xxxxxxxxxx
+- Local Key: xxxxxxxxxxxxx
+- IP: xxxxxxxxxxxxxx
 - Port: 6668 (default)
 - Home Assistant Version: 2025.2.4
 

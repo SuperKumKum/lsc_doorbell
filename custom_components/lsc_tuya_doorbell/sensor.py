@@ -7,6 +7,7 @@ from .const import (
     ATTR_DEVICE_ID,
     ATTR_TIMESTAMP,
     CONF_DEVICE_ID,
+    CONF_HOST,
     CONF_LAST_IP
 )
 
@@ -31,6 +32,7 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
         self._device_id = device_id
         self._state = None
         self._last_trigger = None
+        self.entity_id = f"sensor.lsc_tuya_motion_{device_id[-4:]}"
         
     @property
     def name(self):
@@ -116,6 +118,7 @@ class LscTuyaStatusSensor(SensorEntity):
         self._attr_name = f"LSC Tuya Status {device_id[-4:]}"
         self._attr_unique_id = f"{device_id}_status"
         self._attr_icon = "mdi:connection"
+        self.entity_id = f"sensor.lsc_tuya_status_{device_id[-4:]}"
         
     @property
     def state(self):
@@ -123,8 +126,12 @@ class LscTuyaStatusSensor(SensorEntity):
         
     @property
     def extra_state_attributes(self):
+        # Get current device IP (may have been rediscovered)
+        host = self._hub.entry.data.get(CONF_HOST) or self._hub.entry.data.get(CONF_LAST_IP)
+        
         return {
-            "ip_address": self._hub.entry.data.get(CONF_LAST_IP),
-            "last_heartbeat": self._hub.last_heartbeat,
-            "device_id": self._device_id
+            "ip_address": host if host else "Unknown",
+            "last_heartbeat": self._hub.last_heartbeat if self._hub.last_heartbeat else "Unknown",
+            "device_id": self._device_id,
+            "connection_status": "Active" if self._hub._protocol else "Disconnected"
         }

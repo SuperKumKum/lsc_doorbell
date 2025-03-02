@@ -8,6 +8,15 @@ CONF_LOCAL_KEY = "local_key"
 CONF_MAC = "mac"
 CONF_LAST_IP = "last_ip"
 CONF_DPS_MAP = "dps_map"
+CONF_SUBNET = "subnet"
+
+# Connection validation results
+RESULT_WAITING = "waiting"
+RESULT_CONNECTING = "connecting"
+RESULT_SUCCESS = "success"
+RESULT_AUTH_FAILED = "auth_failed"
+RESULT_NOT_FOUND = "not_found"
+RESULT_CONNECTION_FAILED = "connection_failed"
 
 DEFAULT_PORT = 6668
 DEFAULT_DPS_MAP = {
