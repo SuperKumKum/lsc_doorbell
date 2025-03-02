@@ -363,19 +363,31 @@ def parse_header(data):
     if len(data) < header_len:
         raise DecodeError("Not enough data to unpack header")
 
-    prefix, seqno, cmd, payload_len = struct.unpack(
-        MESSAGE_HEADER_FMT, data[:header_len]
-    )
+    try:
+        prefix, seqno, cmd, payload_len = struct.unpack(
+            MESSAGE_HEADER_FMT, data[:header_len]
+        )
+    except struct.error as e:
+        raise DecodeError(f"Failed to unpack header: {str(e)}")
 
     if prefix != PREFIX_VALUE:
         # self.debug('Header prefix wrong! %08X != %08X', prefix, PREFIX_VALUE)
         raise DecodeError("Header prefix wrong! %08X != %08X" % (prefix, PREFIX_VALUE))
 
-    # sanity check. currently the max payload length is somewhere around 300 bytes
-    if payload_len > 1000:
+    # Improved sanity check with better error handling
+    # Most Tuya messages are under 300 bytes, but allow up to 4096 for flexibility
+    if payload_len > 4096:
         raise DecodeError(
-            "Header claims the packet size is over 1000 bytes! It is most likely corrupt. Claimed size: %d bytes"
+            "Header claims the packet size is %d bytes, which exceeds maximum expected size (4096). Packet is likely corrupt."
             % payload_len
+        )
+    elif payload_len > 1000:
+        # Still log a warning for large packets
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Unusually large packet received: %d bytes. This is uncommon but will be processed.",
+            payload_len
         )
 
     return TuyaHeader(prefix, seqno, cmd, payload_len)
@@ -448,7 +460,12 @@ class MessageDispatcher(ContextualLogger):
     async def wait_for(self, seqno, cmd, timeout=5):
         """Wait for response to a sequence number to be received and return it."""
         if seqno in self.listeners:
-            raise Exception(f"listener exists for {seqno}")
+            # Clear any existing listener for heartbeat (HEARTBEAT_SEQNO)
+            if seqno == self.HEARTBEAT_SEQNO:
+                self.debug("Clearing existing listener for heartbeat sequence number")
+                del self.listeners[seqno]
+            else:
+                raise Exception(f"listener exists for {seqno}")
 
         self.debug("Command %d waiting for seq. number %d", cmd, seqno)
         self.listeners[seqno] = asyncio.Semaphore(0)
@@ -469,17 +486,37 @@ class MessageDispatcher(ContextualLogger):
         header_len = struct.calcsize(MESSAGE_RECV_HEADER_FMT)
 
         while self.buffer:
-            # Check if enough data for measage header
+            # Check if enough data for message header
             if len(self.buffer) < header_len:
                 break
 
-            header = parse_header(self.buffer)
-            hmac_key = self.local_key if self.version == 3.4 else None
-            msg = unpack_message(
-                self.buffer, header=header, hmac_key=hmac_key, logger=self
-            )
-            self.buffer = self.buffer[header_len - 4 + header.length :]
-            self._dispatch(msg)
+            try:
+                # Try to parse the header
+                header = parse_header(self.buffer)
+                
+                # Check if we have enough data for the complete message
+                total_length = header_len - 4 + header.length
+                if len(self.buffer) < total_length:
+                    # Not enough data yet, wait for more
+                    break
+                    
+                # Unpack and process the message
+                hmac_key = self.local_key if self.version == 3.4 else None
+                msg = unpack_message(
+                    self.buffer, header=header, hmac_key=hmac_key, logger=self
+                )
+                
+                # Update buffer to remove the processed message
+                self.buffer = self.buffer[total_length:]
+                
+                # Dispatch the message to listeners
+                self._dispatch(msg)
+                
+            except DecodeError as e:
+                # If we get a decode error, log it and try to recover by skipping one byte
+                self.warning("Error decoding message: %s", str(e))
+                # Skip one byte and try again
+                self.buffer = self.buffer[1:]
 
     def _dispatch(self, msg):
         """Dispatch a message to someone that is listening."""
@@ -659,7 +696,11 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
                     self.debug("Heartbeat failed due to timeout, disconnecting")
                     break
                 except Exception as ex:  # pylint: disable=broad-except
-                    self.exception("Heartbeat failed (%s), disconnecting", ex)
+                    self.error("Heartbeat failed (%s), disconnecting", ex)
+                    # Cleanup any heartbeat listeners to prevent future conflicts
+                    if self.dispatcher and MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
+                        self.debug("Cleaning up stale heartbeat listener")
+                        del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
                     break
 
             transport = self.transport
@@ -671,21 +712,50 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
     def data_received(self, data):
         """Received data from device."""
         # self.debug("received data=%r", binascii.hexlify(data))
-        self.dispatcher.add_data(data)
+        try:
+            self.dispatcher.add_data(data)
+        except DecodeError as e:
+            # Handle packet corruption errors more gracefully
+            self.warning("Received corrupted data packet: %s", str(e))
+            # Clear the buffer to prevent cascading errors
+            self.dispatcher.buffer = bytes()
 
     def connection_lost(self, exc):
         """Disconnected from device."""
         self.debug("Connection lost: %s", exc)
         self.real_local_key = self.local_key
+        
+        # Clean up the dispatcher's listeners to prevent issues on reconnection
+        if self.dispatcher is not None:
+            # Clear any heartbeat listeners that might be hanging around
+            if MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
+                self.debug("Cleaning up stale heartbeat listener during disconnect")
+                del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
+        
+        # Clear internal state
+        self.transport = None
+        
+        # Cancel any pending heartbeats
+        if self.heartbeater is not None:
+            self.heartbeater.cancel()
+            self.heartbeater = None
+        
         try:
             listener = self.listener and self.listener()
             if listener is not None:
                 try:
+                    # Try calling the disconnected callback
+                    self.debug("Calling disconnected callback")
                     listener.disconnected()
                 except TypeError:
                     self.warning("Disconnected callback not async, will use legacy mode")
                     # Handling case where disconnected() is not async but is called from async context
-                    asyncio.create_task(listener.hub._schedule_reconnect())
+                    try:
+                        asyncio.create_task(listener.hub._schedule_reconnect())
+                    except Exception as e:
+                        self.exception("Failed to create reconnect task: %s", str(e))
+                except Exception as e:
+                    self.exception("Error in disconnected callback: %s", str(e))
         except Exception:  # pylint: disable=broad-except
             self.exception("Failed to call disconnected callback")
 
@@ -701,6 +771,10 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
                 pass
             self.heartbeater = None
         if self.dispatcher is not None:
+            # Clean up any stale heartbeat listeners
+            if MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
+                self.debug("Cleaning up stale heartbeat listener during close")
+                del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
             self.dispatcher.abort()
             self.dispatcher = None
         if self.transport is not None:
@@ -753,6 +827,10 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
 
     async def exchange(self, command, dps=None):
         """Send and receive a message, returning response from device."""
+        if not self.transport:
+            self.debug("No transport available for exchange, returning None")
+            return None
+            
         if self.version == 3.4 and self.real_local_key == self.local_key:
             self.debug("3.4 device: negotiating a new session key")
             await self._negotiate_session_key()
@@ -771,15 +849,23 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
         seqno = self.seqno
 
         if payload.cmd == HEART_BEAT:
+            # Clean up any existing heartbeat listeners before creating a new one
+            if MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
+                self.debug("Clearing stale heartbeat listener before sending new heartbeat")
+                del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
             seqno = MessageDispatcher.HEARTBEAT_SEQNO
         elif payload.cmd == UPDATEDPS:
             seqno = MessageDispatcher.RESET_SEQNO
 
         enc_payload = self._encode_message(payload)
         self.transport.write(enc_payload)
-        msg = await self.dispatcher.wait_for(seqno, payload.cmd)
-        if msg is None:
-            self.debug("Wait was aborted for seqno %d", seqno)
+        try:
+            msg = await self.dispatcher.wait_for(seqno, payload.cmd)
+            if msg is None:
+                self.debug("Wait was aborted for seqno %d", seqno)
+                return None
+        except Exception as ex:
+            self.error("Error waiting for response to command %s: %s", command, ex)
             return None
 
         # TODO: Verify stuff, e.g. CRC sequence number?

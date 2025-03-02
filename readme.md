@@ -112,9 +112,13 @@ The integration includes:
 
 ## 📝 Credits
 
-Created by Jurgen Mahn with contributions from the Home Assistant community.
+This Home Assistant integration was developed with the assistance of AI tools:
 
-Based on research on the Tuya protocol and adapted from various open-source Tuya communication libraries.
+Aider: Initially used as an AI coding assistant to help develop and refine the codebase
+Claude Code: Used as an AI coding assistant to help develop and refine the codebase
+
+100% of the application code was created through collaboration with these AI assistants.
+Special thanks to the Home Assistant community for their excellent documentation and frameworks that made this integration possible.
 
 ## 📜 License
 

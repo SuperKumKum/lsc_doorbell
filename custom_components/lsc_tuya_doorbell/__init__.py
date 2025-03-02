@@ -4,12 +4,15 @@ import base64
 import json
 import binascii
 import struct
-from typing import Any, Union, Optional
+import hashlib
+import os
+from typing import Any, Union, Optional, Dict
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from homeassistant.helpers.storage import Store
 from datetime import timedelta, datetime
 
 from .const import (
@@ -90,6 +93,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         
     return True
 
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Unload a config entry."""
+    hub = hass.data[DOMAIN].pop(entry.entry_id)
+    
+    # Save DPS hashes to storage before unloading
+    await hub._save_dps_hashes()
+    
+    if hub._protocol:
+        await hub._protocol.close()
+    
+    # Unload sensors platform
+    return await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+
 async def async_register_services(hass: HomeAssistant):
     """Register custom services."""
     async def handle_get_image_url(call):
@@ -140,6 +156,8 @@ class TuyaDoorbellListener:
     def __init__(self, hub):
         """Initialize the listener."""
         self.hub = hub
+        # Track last disconnect time to prevent reconnect storms
+        self._last_disconnect_time = None
         
     def status_updated(self, status):
         """Device updated status."""
@@ -151,6 +169,21 @@ class TuyaDoorbellListener:
             
     def disconnected(self):
         """Device disconnected."""
+        # Import here to avoid circular imports
+        from datetime import datetime, timedelta
+        
+        # Check if we've disconnected too recently (prevent rapid reconnect cycle)
+        now = datetime.now()
+        if self._last_disconnect_time is not None:
+            time_since_last = now - self._last_disconnect_time
+            if time_since_last < timedelta(seconds=5):
+                _LOGGER.warning("Multiple disconnects detected within 5 seconds. Increasing backoff.")
+                # Double the reconnect delay to slow down reconnection attempts
+                self.hub._reconnect_delay = min(self.hub._reconnect_delay * 2, self.hub._max_reconnect_delay)
+        
+        # Update the last disconnect time
+        self._last_disconnect_time = now
+        
         _LOGGER.warning("Disconnected from device, scheduling reconnect")
         self.hub.hass.async_create_task(self.hub._schedule_reconnect())
 
@@ -169,6 +202,11 @@ class LscTuyaHub:
         self.last_heartbeat = None
         self._heartbeat_timer = None
         self._listener = TuyaDoorbellListener(self)
+        
+        # Set up persistent storage for DPS hashes
+        self._dps_hashes = {}
+        self._storage = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_dps_hashes")
+        self._load_dps_hashes()
 
     async def async_setup(self):
         """Set up the hub."""
@@ -238,23 +276,43 @@ class LscTuyaHub:
             # Enable debug for more detailed logs
             enable_debug = True
             
-            self._protocol = await connect(
-                host,
-                config[CONF_DEVICE_ID],
-                config[CONF_LOCAL_KEY],
-                version,
-                enable_debug,
-                self._listener,
-                port=port,
-                timeout=10
-            )
-            
-            _LOGGER.info("Connected to %s using PyTuya", config[CONF_NAME])
-            self._reconnect_delay = 10
-            
-            # Start heartbeat and record initial timestamp
-            self._protocol.start_heartbeat()
-            self.last_heartbeat = datetime.now().isoformat()
+            try:
+                self._protocol = await connect(
+                    host,
+                    config[CONF_DEVICE_ID],
+                    config[CONF_LOCAL_KEY],
+                    version,
+                    enable_debug,
+                    self._listener,
+                    port=port,
+                    timeout=10
+                )
+                
+                _LOGGER.info("Connected to %s using PyTuya", config[CONF_NAME])
+                self._reconnect_delay = 10
+                
+                # Start heartbeat and record initial timestamp
+                self._protocol.start_heartbeat()
+                self.last_heartbeat = datetime.now().isoformat()
+                
+                # Update all sensors for this device
+                device_id = config[CONF_DEVICE_ID]
+                
+                # Find and update all sensors related to this device
+                for entity_id in self.hass.states.async_entity_ids("sensor"):
+                    if entity_id.startswith("sensor.lsc_tuya_") and device_id[-4:] in entity_id:
+                        _LOGGER.debug("Updating entity: %s", entity_id)
+                        self.hass.async_create_task(
+                            self.hass.services.async_call(
+                                "homeassistant", "update_entity",
+                                {"entity_id": entity_id},
+                                blocking=False
+                            )
+                        )
+            except Exception as e:
+                _LOGGER.error("Error establishing connection: %s", str(e))
+                self._protocol = None
+                # Allow the exception to propagate so the reconnect mechanism can handle it
             
             # Try to get initial status
             status = None
@@ -280,6 +338,41 @@ class LscTuyaHub:
             # Schedule reconnect without awaiting since we're in an async function
             self.hass.async_create_task(self._schedule_reconnect())
 
+    def _load_dps_hashes(self):
+        """Load DPS hashes from persistent storage."""
+        async def _load_from_storage():
+            try:
+                data = await self._storage.async_load()
+                if data:
+                    self._dps_hashes = data
+                    _LOGGER.debug("Loaded DPS hashes from storage: %s", self._dps_hashes)
+                else:
+                    self._dps_hashes = {}
+                    _LOGGER.debug("No DPS hashes in storage, starting fresh")
+            except Exception as e:
+                _LOGGER.error("Error loading DPS hashes: %s", str(e))
+                self._dps_hashes = {}
+        
+        # Schedule loading from storage
+        self.hass.async_create_task(_load_from_storage())
+    
+    async def _save_dps_hashes(self):
+        """Save DPS hashes to persistent storage."""
+        await self._storage.async_save(self._dps_hashes)
+        _LOGGER.debug("Saved DPS hashes to storage: %s", self._dps_hashes)
+    
+    def _calculate_hash(self, value: Any) -> str:
+        """Calculate a consistent hash for any value."""
+        # Convert value to a stable string representation for hashing
+        if isinstance(value, dict) or isinstance(value, list):
+            value_str = json.dumps(value, sort_keys=True)
+        else:
+            value_str = str(value)
+        
+        # Calculate hash using SHA-256
+        hash_obj = hashlib.sha256(value_str.encode('utf-8'))
+        return hash_obj.hexdigest()
+    
     async def _handle_dps_update(self, dp: str, value: Any):
         """Handle DPS update and fire events."""
         config = self.entry.data
@@ -294,6 +387,20 @@ class LscTuyaHub:
         motion_dp = str(dps_map.get('motion', "115"))
         
         _LOGGER.debug("Expected DPs - Button: %s, Motion: %s", button_dp, motion_dp)
+        
+        # Calculate hash of the new value
+        current_hash = self._calculate_hash(value)
+        previous_hash = self._dps_hashes.get(dp)
+        
+        # Check if we've seen this exact payload before
+        if previous_hash == current_hash:
+            _LOGGER.info("Ignoring duplicate update for DP %s (hash: %s)", dp, current_hash[:8])
+            return
+        
+        # Update the hash for this DP
+        self._dps_hashes[dp] = current_hash
+        # Save the updated hashes
+        self.hass.async_create_task(self._save_dps_hashes())
 
         try:
             if dp == button_dp:
@@ -397,7 +504,7 @@ class LscTuyaHub:
                 _LOGGER.debug("DP %s not mapped to any known event (value: %s)", dp, value)
 
             if event_type:
-                _LOGGER.info("Firing event %s with data: %s", event_type, event_data)
+                _LOGGER.info("Firing event %s with data: %s (hash: %s)", event_type, event_data, current_hash[:8])
                 self.hass.bus.async_fire(event_type, event_data)
                 _LOGGER.debug("Event fired successfully")
 
@@ -407,25 +514,52 @@ class LscTuyaHub:
 
     async def _schedule_reconnect(self):
         """Schedule a reconnect with exponential backoff."""
-        self._reconnect_delay = min(self._reconnect_delay * 2, self._max_reconnect_delay)
-        _LOGGER.info("Scheduling reconnect in %s seconds", self._reconnect_delay)
+        # Clear the protocol to ensure we know we're disconnected
+        self._protocol = None
+        
+        # Calculate backoff delay with a random jitter to prevent reconnection storms
+        import random
+        jitter = random.uniform(0.8, 1.2)  # Add 20% randomness
+        self._reconnect_delay = min(self._reconnect_delay * 2 * jitter, self._max_reconnect_delay)
+        
+        _LOGGER.info("Scheduling reconnect in %.1f seconds", self._reconnect_delay)
+        
+        # Schedule the reconnection
         async_call_later(self.hass, self._reconnect_delay, self._async_reconnect)
-        _LOGGER.debug("Reconnect scheduled, protocol status: %s", 
-                     "Valid" if self._protocol else "None")
+        _LOGGER.debug("Reconnect scheduled")
 
     async def _async_reconnect(self, _):
         """Reconnect to the device."""
-        _LOGGER.debug("Executing reconnection procedure")
+        _LOGGER.info("Executing reconnection procedure")
         
         # Close existing connection if it exists
         if self._protocol is not None:
             try:
+                _LOGGER.debug("Closing existing connection before reconnect")
                 await self._protocol.close()
             except Exception as e:
                 _LOGGER.debug("Error closing connection: %s", str(e))
-                
-        # Connect again
-        await self._async_connect()
+            
+            # Set protocol to None to avoid confusion
+            self._protocol = None
+        
+        try:        
+            # Connect again
+            _LOGGER.info("Attempting to reconnect to device")
+            await self._async_connect()
+            
+            if self._protocol:
+                _LOGGER.info("Reconnection successful")
+                # Reset the reconnect delay on successful connection
+                self._reconnect_delay = 10
+            else:
+                _LOGGER.warning("Reconnection attempt failed, will retry later")
+                # The _async_connect method will schedule another reconnect if needed
+        except Exception as e:
+            _LOGGER.error("Error during reconnection attempt: %s", str(e))
+            _LOGGER.debug("Reconnection error details", exc_info=True)
+            # Schedule another reconnect attempt
+            await self._schedule_reconnect()
 
     async def _test_connection(self, host: str, port: int) -> bool:
         """Test if we can connect to the device."""
@@ -516,16 +650,17 @@ class LscTuyaHub:
             
             # Update the status sensor to reflect the new heartbeat time
             if DOMAIN in self.hass.data and self.entry.entry_id in self.hass.data[DOMAIN]:
-                # Find the status sensor entity and update its state
-                device_id_suffix = self.entry.data[CONF_DEVICE_ID][-4:]
-                entity_id = f"sensor.lsc_tuya_status_{device_id_suffix}"
+                # Find and update all sensors for this device
+                device_id = self.entry.data[CONF_DEVICE_ID]
                 
-                # Update the sensor entity 
-                _LOGGER.debug("Requesting update for sensor %s", entity_id)
-                await self.hass.services.async_call(
-                    "homeassistant", "update_entity", 
-                    {"entity_id": entity_id}, blocking=False
-                )
+                # Try to update all sensors that might exist for this device
+                for entity_id in self.hass.states.async_entity_ids("sensor"):
+                    if entity_id.startswith("sensor.lsc_tuya_") and device_id[-4:] in entity_id:
+                        _LOGGER.debug("Requesting update for sensor %s", entity_id)
+                        await self.hass.services.async_call(
+                            "homeassistant", "update_entity", 
+                            {"entity_id": entity_id}, blocking=False
+                        )
             
             return True
         except Exception as e:

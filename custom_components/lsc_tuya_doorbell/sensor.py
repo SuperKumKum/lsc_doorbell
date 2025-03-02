@@ -35,9 +35,7 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
         self._device_id = device_id
         self._state = None
         self._last_trigger = None
-        
-        # Set entity ID based on sensor type defined at class level
-        self.entity_id = f"sensor.lsc_tuya_{self.SENSOR_TYPE}_{device_id[-4:]}"
+        # Don't set entity_id manually - let Home Assistant handle it based on unique_id
         
     @property
     def name(self):
@@ -123,7 +121,7 @@ class LscTuyaStatusSensor(SensorEntity):
         self._attr_name = f"LSC Tuya {self.SENSOR_TYPE.title()} {device_id[-4:]}"
         self._attr_unique_id = f"{device_id}_{self.SENSOR_TYPE}"
         self._attr_icon = "mdi:connection"
-        self.entity_id = f"sensor.lsc_tuya_{self.SENSOR_TYPE}_{device_id[-4:]}"
+        # Don't set entity_id manually - let Home Assistant handle it based on unique_id
         self._last_heartbeat = None
         
     @property
