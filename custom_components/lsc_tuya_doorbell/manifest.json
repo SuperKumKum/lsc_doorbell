@@ -7,5 +7,6 @@
   "requirements": ["cryptography>=41.0.0", "netifaces>=0.11.0"],
   "config_flow": true,
   "version": "1.4.0",
-  "iot_class": "local_push"
+  "iot_class": "local_push",
+  "icon": "assets/icon.webp"
 }
