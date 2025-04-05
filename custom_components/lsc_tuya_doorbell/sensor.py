@@ -87,10 +87,8 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
                 
                 # Reset after 2 seconds
                 self.hass.loop.call_later(2, lambda: self._reset_state())
-            
-        self.async_on_remove(
-            self.hass.loop.call_later(2, lambda: self._reset_state())
-            
+
+        # Register the event listener and ensure it's removed when the entity is removed
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_MOTION_DETECT, motion_handler)
         )
@@ -160,10 +158,8 @@ class LscTuyaButtonSensor(SensorEntity, RestoreEntity):
                 
                 # Reset after 2 seconds
                 self.hass.loop.call_later(2, lambda: self._reset_state())
-            
-        self.async_on_remove(
-            self.hass.loop.call_later(2, lambda: self._reset_state())
-            
+
+        # Register the event listener and ensure it's removed when the entity is removed
         self.async_on_remove(
             self.hass.bus.async_listen(EVENT_BUTTON_PRESS, button_handler)
         )
