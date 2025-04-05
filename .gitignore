@@ -90,3 +90,4 @@ debug.log
 # Local development files
 dev_notes/
 local/
+.aider*
