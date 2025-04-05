@@ -1,5 +1,6 @@
 from homeassistant.components.sensor import SensorEntity, RestoreEntity
 from homeassistant.core import callback
+from homeassistant.helpers.entity import DeviceInfo
 from .const import (
     DOMAIN,
     EVENT_BUTTON_PRESS,
@@ -8,7 +9,8 @@ from .const import (
     ATTR_TIMESTAMP,
     CONF_DEVICE_ID,
     CONF_HOST,
-    CONF_LAST_IP
+    CONF_LAST_IP,
+    CONF_NAME
 )
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -35,7 +37,14 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
         self._device_id = device_id
         self._state = None
         self._last_trigger = None
-        # Don't set entity_id manually - let Home Assistant handle it based on unique_id
+        # Link to device via device_info
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {self._device_id[-4:]}"),
+            manufacturer="LSC Smart Connect / Tuya",
+            # model="Video Doorbell", # Add model if known/consistent
+            # sw_version=..., # Potentially add later if available
+        )
         
     @property
     def name(self):
@@ -96,6 +105,14 @@ class LscTuyaButtonSensor(SensorEntity, RestoreEntity):
         self._device_id = device_id
         self._state = None
         self._last_trigger = None
+        # Link to device via device_info
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {self._device_id[-4:]}"),
+            manufacturer="LSC Smart Connect / Tuya",
+            # model="Video Doorbell", # Add model if known/consistent
+            # sw_version=..., # Potentially add later if available
+        )
         
     @property
     def name(self):
@@ -157,8 +174,15 @@ class LscTuyaStatusSensor(SensorEntity):
         self._attr_name = f"LSC Tuya {self.SENSOR_TYPE.title()} {device_id[-4:]}"
         self._attr_unique_id = f"{device_id}_{self.SENSOR_TYPE}"
         self._attr_icon = "mdi:connection"
-        # Don't set entity_id manually - let Home Assistant handle it based on unique_id
         self._last_heartbeat = None
+        # Link to device via device_info
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}"),
+            manufacturer="LSC Smart Connect / Tuya",
+            # model="Video Doorbell", # Add model if known/consistent
+            # sw_version=..., # Potentially add later if available
+        )
         
     @property
     def state(self):
