@@ -79,11 +79,16 @@ class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
         @callback
         def motion_handler(event):
             """Handle motion event."""
-            self._state = "Detected"
-            self._last_trigger = event.data[ATTR_TIMESTAMP]
-            self.async_write_ha_state()
+            # Check if the event is for this specific device
+            if event.data.get(ATTR_DEVICE_ID) == self._device_id:
+                self._state = "Detected"
+                self._last_trigger = event.data[ATTR_TIMESTAMP]
+                self.async_write_ha_state()
+                
+                # Reset after 2 seconds
+                self.hass.loop.call_later(2, lambda: self._reset_state())
             
-            # Reset after 2 seconds
+        self.async_on_remove(
             self.hass.loop.call_later(2, lambda: self._reset_state())
             
         self.async_on_remove(
@@ -147,11 +152,16 @@ class LscTuyaButtonSensor(SensorEntity, RestoreEntity):
         @callback
         def button_handler(event):
             """Handle button press event."""
-            self._state = "Pressed"
-            self._last_trigger = event.data[ATTR_TIMESTAMP]
-            self.async_write_ha_state()
+            # Check if the event is for this specific device
+            if event.data.get(ATTR_DEVICE_ID) == self._device_id:
+                self._state = "Pressed"
+                self._last_trigger = event.data[ATTR_TIMESTAMP]
+                self.async_write_ha_state()
+                
+                # Reset after 2 seconds
+                self.hass.loop.call_later(2, lambda: self._reset_state())
             
-            # Reset after 2 seconds
+        self.async_on_remove(
             self.hass.loop.call_later(2, lambda: self._reset_state())
             
         self.async_on_remove(
