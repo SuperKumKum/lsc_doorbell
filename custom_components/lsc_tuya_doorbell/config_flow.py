@@ -473,9 +473,10 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         """Initialize options flow."""
-        self.config_entry = config_entry
         self.options = dict(config_entry.options)
         self.device_config = dict(config_entry.data)
+        # Store entry_id instead of the full config_entry to avoid deprecation warning
+        self.entry_id = config_entry.entry_id
     
     async def async_step_init(self, user_input=None):
         """Handle the initial step."""
@@ -529,11 +530,13 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
                 if not errors:
                     _LOGGER.info(f"Updating configuration for {updated_config.get(CONF_NAME)}")
                     
-                    # Update the config entry with new data
-                    self.hass.config_entries.async_update_entry(
-                        self.config_entry,
-                        data=updated_config
-                    )
+                    # Get the config entry by entry_id and update it
+                    config_entry = self.hass.config_entries.async_get_entry(self.entry_id)
+                    if config_entry:
+                        self.hass.config_entries.async_update_entry(
+                            config_entry,
+                            data=updated_config
+                        )
                     
                     # Reload the integration to apply changes
                     return self.async_create_entry(title="", data={})
