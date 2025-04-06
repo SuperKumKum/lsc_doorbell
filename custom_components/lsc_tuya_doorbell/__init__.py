@@ -116,15 +116,21 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
             hub._protocol = None
     
     # Unload the config entry
-    await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    unload_result = await hass.config_entries.async_unload_entry(entry)
+    if not unload_result:
+        _LOGGER.error("Failed to unload entry %s", entry.entry_id)
+        return
     
-    # Clear existing hub
-    hass.data[DOMAIN].pop(entry.entry_id, None)
+    # Wait briefly to ensure unload completes
+    await asyncio.sleep(1)
     
     # Reload the config entry
-    await hass.config_entries.async_setup(entry.entry_id)
+    reload_result = await hass.config_entries.async_setup_entry(entry)
     
-    _LOGGER.info("Reloaded configuration for %s", entry.data.get(CONF_NAME, "LSC Doorbell"))
+    if reload_result:
+        _LOGGER.info("Successfully reloaded configuration for %s", entry.data.get(CONF_NAME, "LSC Doorbell"))
+    else:
+        _LOGGER.error("Failed to reload configuration for %s", entry.data.get(CONF_NAME, "LSC Doorbell"))
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
