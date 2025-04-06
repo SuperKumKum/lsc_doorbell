@@ -25,7 +25,9 @@ from .const import (
     CONF_MAC,
     CONF_LAST_IP,
     CONF_DPS_MAP,
+    CONF_PROTOCOL_VERSION,
     DEFAULT_PORT,
+    DEFAULT_PROTOCOL_VERSION,
     DEFAULT_DPS_MAP,
     EVENT_BUTTON_PRESS,
     EVENT_MOTION_DETECT,
@@ -92,8 +94,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         
     # Set up sensor platform using the newer method
     await hass.config_entries.async_forward_entry_setups(entry, ["sensor"])
+    
+    # Register update listener for config entry changes
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
         
     return True
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle an options update."""
+    _LOGGER.info("Reloading configuration for %s", entry.data.get(CONF_NAME, "LSC Doorbell"))
+    
+    # Get the existing hub
+    hub = hass.data[DOMAIN].get(entry.entry_id)
+    if hub:
+        # Save cached data before unloading
+        await hub._save_dps_hashes()
+        
+        # Close existing connections
+        if hub._protocol:
+            await hub._protocol.close()
+            hub._protocol = None
+    
+    # Unload the config entry
+    await hass.config_entries.async_unload_platforms(entry, ["sensor"])
+    
+    # Clear existing hub
+    hass.data[DOMAIN].pop(entry.entry_id, None)
+    
+    # Reload the config entry
+    await hass.config_entries.async_setup(entry.entry_id)
+    
+    _LOGGER.info("Reloaded configuration for %s", entry.data.get(CONF_NAME, "LSC Doorbell"))
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
@@ -282,9 +313,8 @@ class LscTuyaHub:
             # Connect to the device using PyTuya
             _LOGGER.debug("Connecting to device at %s:%s with PyTuya", host, port)
             
-            # Use protocol version 3.3 which seems to work with most Tuya devices
-            # including doorbells
-            version = "3.3"
+            # Use the protocol version from config, defaulting to 3.3 if not specified
+            version = config.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
             
             # Enable debug for more detailed logs
             enable_debug = True
@@ -631,11 +661,13 @@ class LscTuyaHub:
                 from .pytuya import connect
                 
                 # Try to connect and get status
+                # Use the protocol version from config, defaulting to 3.3 if not specified
+                protocol_version = config.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
                 protocol = await connect(
                     ip,
                     device_id,
                     local_key,
-                    "3.3",  # Version
+                    protocol_version,  # Use configured version
                     False,  # Debug
                     None,   # No listener for validation
                     port=port,

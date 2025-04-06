@@ -22,6 +22,9 @@ from .const import (
     CONF_LAST_IP,
     CONF_DPS_MAP,
     DEFAULT_DPS_MAP,
+    CONF_PROTOCOL_VERSION,
+    DEFAULT_PROTOCOL_VERSION,
+    PROTOCOL_VERSIONS,
     RESULT_SUCCESS,
     RESULT_AUTH_FAILED,
     RESULT_NOT_FOUND,
@@ -45,12 +48,19 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for LSC Tuya Doorbell."""
     
     VERSION = 1
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
     def __init__(self):
         """Initialize the config flow."""
         self._discoveries = []
         self._devices_in_progress = {}
         self._discovered_devices = []
+        
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return LscTuyaOptionsFlow(config_entry)
 
     async def async_step_user(self, user_input=None) -> FlowResult:
         """Handle the initial step."""
@@ -83,6 +93,7 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         user_input[CONF_PORT],
                         user_input[CONF_DEVICE_ID],
                         user_input[CONF_LOCAL_KEY],
+                        user_input.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION),
                     )
                     
                     if validated == RESULT_AUTH_FAILED:
@@ -124,6 +135,9 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_PORT, default=default_port): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=65535)
             ),
+            vol.Required(CONF_PROTOCOL_VERSION, default=DEFAULT_PROTOCOL_VERSION): vol.In(
+                PROTOCOL_VERSIONS
+            ),
         })
         
         _LOGGER.debug("Showing user form with schema keys: %s", list(schema.schema.keys()))
@@ -146,6 +160,16 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     config[CONF_HOST] = user_input["device_ip"]
                     
                     # We don't need MAC address anymore, removed MAC lookup
+                    
+                    # Make sure the protocol version is in the config
+                    if CONF_PROTOCOL_VERSION not in config:
+                        config[CONF_PROTOCOL_VERSION] = DEFAULT_PROTOCOL_VERSION
+                        
+                    # If we found a device with a different protocol version during discovery, use that
+                    selected_device = next((d for d in self._discovered_devices if d["ip"] == user_input["device_ip"]), None)
+                    if selected_device and "protocol_version" in selected_device:
+                        config[CONF_PROTOCOL_VERSION] = selected_device["protocol_version"]
+                        _LOGGER.info(f"Using discovered protocol version: {selected_device['protocol_version']}")
                             
                     # Add default DPS map if not provided
                     if CONF_DPS_MAP not in config:
@@ -289,12 +313,25 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Port is open, try to connect with PyTuya
             _LOGGER.debug(f"Attempting to validate device at {ip} with PyTuya")
             try:
-                result = await self._validate_device_connection(ip, port, device_id, local_key)
+                # Try with configured protocol version first
+                protocol_version = self._devices_in_progress.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
+                result = await self._validate_device_connection(ip, port, device_id, local_key, protocol_version)
                 
                 if result == RESULT_SUCCESS:
                     # Successfully connected and validated with device ID and key
-                    _LOGGER.info(f"Device at {ip} validated successfully with PyTuya")
-                    return {"ip": ip, "valid": True}
+                    _LOGGER.info(f"Device at {ip} validated successfully with PyTuya using protocol version {protocol_version}")
+                    return {"ip": ip, "valid": True, "protocol_version": protocol_version}
+                
+                # If first attempt fails, try other protocol versions
+                for version in [v for v in PROTOCOL_VERSIONS if v != protocol_version]:
+                    _LOGGER.debug(f"Trying alternative protocol version {version} for device at {ip}")
+                    result = await self._validate_device_connection(ip, port, device_id, local_key, version)
+                    
+                    if result == RESULT_SUCCESS:
+                        _LOGGER.info(f"Device at {ip} validated successfully with PyTuya using alternative protocol version {version}")
+                        # Update protocol version in the device configuration
+                        self._devices_in_progress[CONF_PROTOCOL_VERSION] = version
+                        return {"ip": ip, "valid": True, "protocol_version": version}
                 else:
                     _LOGGER.debug(f"Device at {ip} failed validation: {result}")
             except Exception as e:
@@ -306,14 +343,14 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             _LOGGER.exception(f"Error checking device at {ip}: {str(e)}")
             return None
     
-    async def _validate_device_connection(self, host: str, port: int, device_id: str, local_key: str) -> str:
+    async def _validate_device_connection(self, host: str, port: int, device_id: str, local_key: str, protocol_version: str = DEFAULT_PROTOCOL_VERSION) -> str:
         """Validate connection to a Tuya device."""
         protocol = None
         try:
             from .pytuya import connect
             
             _LOGGER.debug(f"Validating connection to {host}:{port}")
-            _LOGGER.debug(f"Using device ID: {device_id[:5]}...{device_id[-5:]} and local key: {local_key[:3]}...")
+            _LOGGER.debug(f"Using device ID: {device_id[:5]}...{device_id[-5:]}, local key: {local_key[:3]}..., and protocol version: {protocol_version}")
             
             # Try connecting with a short timeout
             try:
@@ -321,7 +358,7 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     host,
                     device_id,
                     local_key,
-                    "3.3",  # Version
+                    protocol_version,  # Use specified protocol version
                     True,   # Debug to see more details
                     None,   # No listener needed for validation
                     port=port,
@@ -429,3 +466,113 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         except Exception as e:
             _LOGGER.exception(f"Error in MAC address lookup for {ip}: {str(e)}")
             return None
+
+
+class LscTuyaOptionsFlow(config_entries.OptionsFlow):
+    """Handle options flow for LSC Tuya Doorbell integration."""
+
+    def __init__(self, config_entry):
+        """Initialize options flow."""
+        self.config_entry = config_entry
+        self.options = dict(config_entry.options)
+        self.device_config = dict(config_entry.data)
+    
+    async def async_step_init(self, user_input=None):
+        """Handle the initial step."""
+        errors = {}
+        
+        if user_input is not None:
+            try:
+                # Update device configuration
+                updated_config = {**self.device_config}
+                
+                # Update values from user input
+                if CONF_LOCAL_KEY in user_input:
+                    updated_config[CONF_LOCAL_KEY] = user_input[CONF_LOCAL_KEY]
+                if CONF_HOST in user_input:
+                    updated_config[CONF_HOST] = user_input[CONF_HOST]
+                if CONF_PORT in user_input:
+                    updated_config[CONF_PORT] = user_input[CONF_PORT]
+                if CONF_PROTOCOL_VERSION in user_input:
+                    updated_config[CONF_PROTOCOL_VERSION] = user_input[CONF_PROTOCOL_VERSION]
+                if CONF_DPS_MAP in user_input:
+                    if isinstance(user_input[CONF_DPS_MAP], str):
+                        try:
+                            # Convert string representation to dictionary
+                            import json
+                            dps_map = json.loads(user_input[CONF_DPS_MAP])
+                            updated_config[CONF_DPS_MAP] = dps_map
+                        except Exception as e:
+                            _LOGGER.error(f"Error parsing DPS map: {e}")
+                            errors[CONF_DPS_MAP] = "invalid_dps_map"
+                    else:
+                        updated_config[CONF_DPS_MAP] = user_input[CONF_DPS_MAP]
+                
+                # Validate connection with new settings if host and key are provided
+                if not errors and CONF_HOST in updated_config and CONF_LOCAL_KEY in updated_config:
+                    # Create a validation instance
+                    validator = LscTuyaConfigFlow()
+                    result = await validator._validate_device_connection(
+                        updated_config[CONF_HOST],
+                        updated_config.get(CONF_PORT, DEFAULT_PORT),
+                        updated_config[CONF_DEVICE_ID],
+                        updated_config[CONF_LOCAL_KEY],
+                        updated_config.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
+                    )
+                    
+                    if result == RESULT_AUTH_FAILED:
+                        errors[CONF_LOCAL_KEY] = "invalid_auth"
+                    elif result == RESULT_CONNECTION_FAILED:
+                        errors[CONF_HOST] = "cannot_connect"
+                
+                # Save changes if no errors
+                if not errors:
+                    _LOGGER.info(f"Updating configuration for {updated_config.get(CONF_NAME)}")
+                    
+                    # Update the config entry with new data
+                    self.hass.config_entries.async_update_entry(
+                        self.config_entry,
+                        data=updated_config
+                    )
+                    
+                    # Reload the integration to apply changes
+                    return self.async_create_entry(title="", data={})
+                    
+            except Exception as e:
+                _LOGGER.exception(f"Unexpected error during reconfiguration: {e}")
+                errors["base"] = "unknown"
+        
+        # Create schema with current values as defaults
+        schema = vol.Schema({
+            vol.Optional(
+                CONF_LOCAL_KEY, 
+                default=self.device_config.get(CONF_LOCAL_KEY, "")
+            ): str,
+            vol.Optional(
+                CONF_HOST, 
+                default=self.device_config.get(CONF_HOST, "")
+            ): str,
+            vol.Optional(
+                CONF_PORT, 
+                default=self.device_config.get(CONF_PORT, DEFAULT_PORT)
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional(
+                CONF_PROTOCOL_VERSION, 
+                default=self.device_config.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
+            ): vol.In(PROTOCOL_VERSIONS),
+            vol.Optional(
+                CONF_DPS_MAP,
+                default=str(self.device_config.get(CONF_DPS_MAP, DEFAULT_DPS_MAP)).replace("'", "\"")
+            ): str,
+        })
+        
+        # Show the form
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={
+                "name": self.device_config.get(CONF_NAME, "LSC Doorbell"),
+                "device_id": self.device_config.get(CONF_DEVICE_ID, "")
+            }
+        )

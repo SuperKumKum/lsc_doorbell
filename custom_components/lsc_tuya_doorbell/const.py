@@ -11,6 +11,7 @@ CONF_MAC = "mac"
 CONF_LAST_IP = "last_ip"
 CONF_DPS_MAP = "dps_map"
 CONF_SUBNET = "subnet"
+CONF_PROTOCOL_VERSION = "protocol_version"
 
 # Connection validation results
 RESULT_WAITING = "waiting"
@@ -21,10 +22,14 @@ RESULT_NOT_FOUND = "not_found"
 RESULT_CONNECTION_FAILED = "connection_failed"
 
 DEFAULT_PORT = 6668
+DEFAULT_PROTOCOL_VERSION = "3.3"
 DEFAULT_DPS_MAP = {
     "button": "185",
     "motion": "115"
 }
+
+# Protocol versions to try during discovery, in order of likelihood
+PROTOCOL_VERSIONS = ["3.3", "3.1", "3.4", "3.2"]
 
 ATTR_DEVICE_ID = "device_id"
 ATTR_IMAGE_DATA = "image_data"

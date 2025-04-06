@@ -9,7 +9,8 @@
           "device_id": "Device ID",
           "local_key": "Local Key",
           "host": "IP Address or Subnet (e.g. 192.168.1.0/24)",
-          "port": "Port"
+          "port": "Port",
+          "protocol_version": "Protocol Version"
         },
         "description": "Enter your Tuya doorbell information. For the IP Address, you can enter a specific IP or a subnet (e.g. 192.168.1.0/24) to automatically scan for devices."
       },
@@ -29,10 +30,32 @@
       "invalid_subnet": "Invalid subnet format. Use CIDR notation (e.g. 192.168.1.0/24)",
       "subnet_too_large": "Subnet must be /24 or smaller for efficient scanning",
       "no_devices_found": "No devices found with the specified port open in this subnet",
+      "invalid_dps_map": "Invalid DPS map format. Must be valid JSON.",
       "unknown": "Unexpected error"
     },
     "abort": {
       "already_configured": "Device already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update LSC Tuya Doorbell Configuration",
+        "data": {
+          "local_key": "Local Key",
+          "host": "IP Address",
+          "port": "Port",
+          "protocol_version": "Protocol Version",
+          "dps_map": "DPS Map (JSON format)"
+        },
+        "description": "Update configuration for {name} (Device ID: {device_id}). Changes will take effect immediately and the device will reconnect with the new settings."
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device",
+      "invalid_auth": "Invalid local key",
+      "invalid_dps_map": "Invalid DPS map format. Must be valid JSON.",
+      "unknown": "Unexpected error"
     }
   }
 }
