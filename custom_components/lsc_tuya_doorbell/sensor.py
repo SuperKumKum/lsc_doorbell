@@ -1,199 +1,260 @@
-from homeassistant.components.sensor import SensorEntity, RestoreEntity
-from homeassistant.core import callback
+"""Sensor entities for LSC Tuya Doorbell."""
+import logging
+
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import DeviceInfo
+
 from .const import (
     DOMAIN,
+    CONF_DEVICE_ID,
+    CONF_NAME,
+    CONF_HOST,
+    CONF_FIRMWARE_VERSION,
     EVENT_BUTTON_PRESS,
     EVENT_MOTION_DETECT,
     ATTR_DEVICE_ID,
     ATTR_TIMESTAMP,
-    CONF_DEVICE_ID,
-    CONF_HOST,
-    CONF_LAST_IP,
-    CONF_NAME
 )
+from .entity import TuyaDoorbellEntity
+from .dp_entities import DPType, DPCategory, get_dp_definitions
 
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up sensors from a config entry."""
+_LOGGER = logging.getLogger(__name__)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, 
+    config_entry: ConfigEntry, 
+    async_add_entities: AddEntitiesCallback
+) -> None:
+    """Set up sensors based on a config entry."""
     hub = hass.data[DOMAIN][config_entry.entry_id]
     device_id = config_entry.data[CONF_DEVICE_ID]
+    firmware_version = config_entry.data.get(CONF_FIRMWARE_VERSION, "Version 4")
     
-    sensors = [
-        LscTuyaMotionSensor(hub, device_id),
-        LscTuyaButtonSensor(hub, device_id),
-        LscTuyaStatusSensor(hub, device_id)
+    entities = []
+    
+    # Add connection status sensor
+    entities.append(LscTuyaStatusSensor(hub, device_id))
+    
+    # Get DP definitions based on firmware version
+    dp_definitions = get_dp_definitions(firmware_version)
+    
+    # Excluded items
+    excluded_codes = [
+        "chime_ring_volume",   # DP 157 - Chime Volume - should be a control only
+        "basic_device_volume", # DP 160 - Device Volume - should be a control only
+        "sd_format",           # DP 111 - Format SD Card - should be a control only
+        "motion_switch",       # DP 134 - Motion Detection - should be a switch only
+        "sd_status",           # DP 110 - SD Card Status - control related
+        "sd_format_state",     # DP 117 - SD Format State - control related
     ]
     
-    async_add_entities(sensors)
+    # Add DP-based sensors - but exclude specified ones
+    for dp_id, dp_def in dp_definitions.items():
+        # Skip if in excluded list
+        if dp_def.code in excluded_codes:
+            _LOGGER.info(f"Skipping sensor creation for {dp_def.name} (DP {dp_id}) - excluded")
+            continue
+            
+        if dp_def.dp_type in [DPType.STRING, DPType.INTEGER, DPType.RAW]:
+            # Only status_only items go to sensor
+            if dp_def.dp_type != DPType.RAW or dp_def.category == DPCategory.STATUS_ONLY:
+                entity = TuyaDoorbellSensor(hub, device_id, dp_def)
+                _LOGGER.info(f"Creating sensor entity: {dp_def.name} (DP {dp_id})")
+                entities.append(entity)
+    
+    # Add enum sensors - these are read-only values - but exclude specified ones
+    for dp_id, dp_def in dp_definitions.items():
+        # Skip if in excluded list
+        if dp_def.code in excluded_codes:
+            continue
+            
+        if dp_def.dp_type == DPType.ENUM and dp_def.category == DPCategory.STATUS_ONLY:
+            entity = TuyaDoorbellSensor(hub, device_id, dp_def)
+            _LOGGER.info(f"Creating enum sensor entity: {dp_def.name} (DP {dp_id})")
+            entities.append(entity)
+    
+    if entities:
+        async_add_entities(entities)
 
-class LscTuyaMotionSensor(SensorEntity, RestoreEntity):
-    """Representation of a Motion Detection Sensor."""
+
+class TuyaDoorbellSensor(TuyaDoorbellEntity, SensorEntity):
+    """Representation of a Tuya doorbell sensor."""
     
-    # Class-level constants
-    SENSOR_TYPE = "motion"
-    
-    def __init__(self, hub, device_id):
-        self._hub = hub
-        self._device_id = device_id
-        self._state = None
-        self._last_trigger = None
-        # Link to device via device_info
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._device_id)},
-            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {self._device_id[-4:]}"),
-            manufacturer="LSC Smart Connect / Tuya",
-            # model="Video Doorbell", # Add model if known/consistent
-            # sw_version=..., # Potentially add later if available
-        )
+    def __init__(self, hub, device_id, dp_definition):
+        """Initialize the sensor."""
+        super().__init__(hub, device_id, dp_definition)
         
-    @property
-    def name(self):
-        return f"LSC Tuya {self.SENSOR_TYPE.title()} {self._device_id[-4:]}"
-        
-    @property
-    def unique_id(self):
-        return f"{self._device_id}_{self.SENSOR_TYPE}"
-        
-    @property
-    def state(self):
-        return self._state
-        
-    @property
-    def extra_state_attributes(self):
-        return {
-            "last_triggered": self._last_trigger,
-            "device_id": self._device_id
-        }
-        
+        # Set device class based on DP code
+        if "volume" in dp_definition.code:
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_native_unit_of_measurement = "%"
+            
     async def async_added_to_hass(self):
         """When entity is added to hass."""
         await super().async_added_to_hass()
         
-        # Restore previous state
-        last_state = await self.async_get_last_state()
-        if last_state:
-            self._state = last_state.state
-        else:
-            self._state = "Idle"
-        
-        @callback
-        def motion_handler(event):
-            """Handle motion event."""
-            # Check if the event is for this specific device
-            if event.data.get(ATTR_DEVICE_ID) == self._device_id:
-                self._state = "Detected"
-                self._last_trigger = event.data[ATTR_TIMESTAMP]
-                self.async_write_ha_state()
-                
-                # Reset after 10 seconds (increased from 2 seconds for better visibility)
-                self.hass.loop.call_later(10, lambda: self._reset_state())
-
-        # Register the event listener and ensure it's removed when the entity is removed
-        self.async_on_remove(
-            self.hass.bus.async_listen(EVENT_MOTION_DETECT, motion_handler)
-        )
-        
-    def _reset_state(self):
-        self._state = "Idle"
-        self.async_write_ha_state()
-
-class LscTuyaButtonSensor(SensorEntity, RestoreEntity):
-    """Representation of a Doorbell Button Sensor."""
-    
-    # Define the sensor type
-    SENSOR_TYPE = "button"
-    
-    def __init__(self, hub, device_id):
-        self._hub = hub
-        self._device_id = device_id
-        self._state = None
-        self._last_trigger = None
-        # Link to device via device_info
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self._device_id)},
-            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {self._device_id[-4:]}"),
-            manufacturer="LSC Smart Connect / Tuya",
-            # model="Video Doorbell", # Add model if known/consistent
-            # sw_version=..., # Potentially add later if available
-        )
+        # Schedule a refresh of this entity's state after a brief delay
+        # This helps ensure we have the latest state from the device
+        async def delayed_refresh():
+            import asyncio
+            await asyncio.sleep(1)  # Small delay to avoid overwhelming the device
+            await self.async_refresh_state()
+            
+        self.hass.async_create_task(delayed_refresh())
         
     @property
-    def name(self):
-        return f"LSC Tuya {self.SENSOR_TYPE.title()} {self._device_id[-4:]}"
+    def native_value(self):
+        """Return the state of the sensor."""
+        if self._state is None or self._state == "unknown":
+            return None
+            
+        # For enum types, map the state to the enum value if options exist
+        if self._dp_definition.dp_type == DPType.ENUM and self._dp_definition.options:
+            return self._dp_definition.options.get(str(self._state), self._state)
+            
+        # For numeric types with measurement state class, ensure it can be converted to a number
+        if hasattr(self, '_attr_state_class') and self._attr_state_class == SensorStateClass.MEASUREMENT:
+            try:
+                # Try to convert to float, return None if not possible
+                return float(self._state)
+            except (ValueError, TypeError):
+                return None
         
-    @property
-    def unique_id(self):
-        return f"{self._device_id}_{self.SENSOR_TYPE}"
-        
-    @property
-    def state(self):
+        # For RAW data, return a better formatted representation
+        if self._dp_definition.dp_type == DPType.RAW:
+            if isinstance(self._state, dict) and "data" in self._state:
+                # If we've decoded base64 to something presentable, show that
+                return str(self._state["data"])
+            elif isinstance(self._state, dict) and "type" in self._state and self._state["type"] == "encoded_data":
+                # If it's encoded data that we can't display well, show a placeholder
+                return f"Encoded data ({self._state.get('length', 'unknown')} bytes)"
+            elif isinstance(self._state, str) and len(self._state) > 100:
+                # Long string, probably encoded data, show a placeholder
+                return f"Binary data ({len(self._state)} bytes)"
+            
+        # Default case
         return self._state
         
     @property
     def extra_state_attributes(self):
-        return {
-            "last_triggered": self._last_trigger,
-            "device_id": self._device_id
-        }
+        """Return device specific state attributes."""
+        attrs = super().extra_state_attributes
         
-    async def async_added_to_hass(self):
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
+        # Remove raw_value if present, as it's not needed for sensors
+        if "raw_value" in attrs:
+            del attrs["raw_value"]
         
-        # Restore previous state
-        last_state = await self.async_get_last_state()
-        if last_state:
-            self._state = last_state.state
-        else:
-            self._state = "Idle"
+        # For RAW types, add additional attributes for better debugging
+        if self._dp_definition.dp_type == DPType.RAW:
+            if isinstance(self._state, dict) and "data" in self._state:
+                attrs["decoded_data"] = True
+                if isinstance(self._state["data"], dict):
+                    # Only include safe, non-sensitive keys
+                    safe_keys = ["type", "timestamp", "count", "status", "version"]
+                    for key in safe_keys:
+                        if key in self._state["data"] and isinstance(self._state["data"][key], (str, int, float, bool)):
+                            attrs[f"data_{key}"] = self._state["data"][key]
+                    
+                    # Indicate there are additional fields without showing them
+                    all_keys = self._state["data"].keys()
+                    other_keys = [k for k in all_keys if k not in safe_keys]
+                    if other_keys:
+                        attrs["additional_fields"] = len(other_keys)
+            elif isinstance(self._state, dict) and "type" in self._state:
+                attrs["encoded"] = True
+                attrs["data_length"] = self._state.get("length", 0)
         
-        @callback
-        def button_handler(event):
-            """Handle button press event."""
-            # Check if the event is for this specific device
-            if event.data.get(ATTR_DEVICE_ID) == self._device_id:
-                self._state = "Pressed"
-                self._last_trigger = event.data[ATTR_TIMESTAMP]
-                self.async_write_ha_state()
+        # For specific sensitive entity types, remove additional attributes
+        sensitive_codes = ["password", "pwd", "onvif", "account", "user", "ip_addr"]
+        if any(code in self._dp_definition.code for code in sensitive_codes):
+            # Keep only basic entity info, remove any potentially sensitive data
+            return {
+                "dp_id": self._dp_definition.id,
+                "dp_code": self._dp_definition.code,
+                "device_id": self._device_id,
+                "value_protected": True
+            }
                 
-                # Reset after 10 seconds (increased from 2 seconds for better visibility)
-                self.hass.loop.call_later(10, lambda: self._reset_state())
+        return attrs
 
-        # Register the event listener and ensure it's removed when the entity is removed
-        self.async_on_remove(
-            self.hass.bus.async_listen(EVENT_BUTTON_PRESS, button_handler)
-        )
-        
-    def _reset_state(self):
-        self._state = "Idle"
-        self.async_write_ha_state()
 
 class LscTuyaStatusSensor(SensorEntity):
     """Device status sensor showing connection info."""
     
-    # Class-level constants
-    SENSOR_TYPE = "status"
-    
     def __init__(self, hub, device_id):
+        """Initialize the status sensor."""
         self._hub = hub
         self._device_id = device_id
-        self._attr_name = f"LSC Tuya {self.SENSOR_TYPE.title()} {device_id[-4:]}"
-        self._attr_unique_id = f"{device_id}_{self.SENSOR_TYPE}"
+        self._attr_name = "Connection Status"
+        self._attr_unique_id = f"{device_id}_connection_status"
         self._attr_icon = "mdi:connection"
         self._last_heartbeat = None
-        # Link to device via device_info
+        
+        # Store the latest event data
+        self._last_doorbell_time = None
+        self._last_doorbell_image = None
+        self._last_motion_time = None
+        self._last_motion_image = None
+        self._event_counters = {
+            "doorbell": 0,
+            "motion": 0
+        }
+        
+        # Set up device info
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self._device_id)},
-            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}"),
+            name=self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {self._device_id[-4:]}"),
             manufacturer="LSC Smart Connect / Tuya",
-            # model="Video Doorbell", # Add model if known/consistent
-            # sw_version=..., # Potentially add later if available
+            model=f"Video Doorbell {self._hub.entry.data.get(CONF_FIRMWARE_VERSION, 'Unknown')}",
         )
         
+        # Set up event listeners
+        hub.hass.bus.async_listen(EVENT_BUTTON_PRESS, self._handle_doorbell_event)
+        hub.hass.bus.async_listen(EVENT_MOTION_DETECT, self._handle_motion_event)
+    
     @property
-    def state(self):
+    def native_value(self):
+        """Return the state of the sensor."""
         return "Connected" if self._hub._protocol else "Disconnected"
     
+    def _handle_doorbell_event(self, event):
+        """Handle doorbell event with image URL."""
+        if event.data.get(ATTR_DEVICE_ID) == self._device_id:
+            # Increment the counter
+            self._event_counters["doorbell"] += 1
+            
+            # Store timestamp
+            self._last_doorbell_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
+            
+            # Store image URL if available
+            if "image_url" in event.data:
+                self._last_doorbell_image = event.data["image_url"]
+                _LOGGER.info(f"Stored doorbell image URL: {self._last_doorbell_image}")
+            
+            # Update the entity state to reflect new data - using event loop to avoid thread safety issues
+            self.hass.add_job(self.async_write_ha_state)
+    
+    def _handle_motion_event(self, event):
+        """Handle motion event with image URL."""
+        if event.data.get(ATTR_DEVICE_ID) == self._device_id:
+            # Increment the counter
+            self._event_counters["motion"] += 1
+            
+            # Store timestamp
+            self._last_motion_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
+            
+            # Store image URL if available
+            if "image_url" in event.data:
+                self._last_motion_image = event.data["image_url"]
+                _LOGGER.info(f"Stored motion image URL: {self._last_motion_image}")
+            
+            # Update the entity state to reflect new data - using event loop to avoid thread safety issues
+            self.hass.add_job(self.async_write_ha_state)
+            
     async def async_update(self):
         """Fetch latest heartbeat time when entity is updated."""
         self._last_heartbeat = self._hub.last_heartbeat
@@ -205,15 +266,38 @@ class LscTuyaStatusSensor(SensorEntity):
         
     @property
     def extra_state_attributes(self):
-        # Get current device IP (may have been rediscovered)
-        host = self._hub.entry.data.get(CONF_HOST) or self._hub.entry.data.get(CONF_LAST_IP)
+        """Return device specific state attributes."""
+        # Get current device IP
+        host = self._hub.entry.data.get(CONF_HOST)
         
-        # Get the latest heartbeat time - default to the cached value or Unknown
+        # Get the latest heartbeat time
         last_heartbeat = self._hub.last_heartbeat or self._last_heartbeat or "Unknown"
         
-        return {
+        # Base attributes
+        attrs = {
             "ip_address": host if host else "Unknown",
             "last_heartbeat": last_heartbeat,
             "device_id": self._device_id,
-            "connection_status": "Active" if self._hub._protocol else "Disconnected"
+            "doorbell_count": self._event_counters["doorbell"],
+            "motion_count": self._event_counters["motion"],
         }
+        
+        # Include last event times
+        if self._last_doorbell_time:
+            attrs["last_doorbell_time"] = self._last_doorbell_time
+            
+        if self._last_motion_time:
+            attrs["last_motion_time"] = self._last_motion_time
+        
+        # Include image URLs if available
+        if self._last_doorbell_image:
+            attrs["last_doorbell_image"] = self._last_doorbell_image
+            # Add a proxy URL that can be used in Lovelace cards
+            attrs["doorbell_image_url"] = self._last_doorbell_image
+            
+        if self._last_motion_image:
+            attrs["last_motion_image"] = self._last_motion_image
+            # Add a proxy URL that can be used in Lovelace cards
+            attrs["motion_image_url"] = self._last_motion_image
+            
+        return attrs

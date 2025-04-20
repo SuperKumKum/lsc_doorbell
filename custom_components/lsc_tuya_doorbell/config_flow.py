@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import json
 import logging
 from typing import Dict, Any, List, Optional, Tuple
 import voluptuous as vol
@@ -25,12 +26,21 @@ from .const import (
     CONF_PROTOCOL_VERSION,
     DEFAULT_PROTOCOL_VERSION,
     PROTOCOL_VERSIONS,
+    CONF_FIRMWARE_VERSION,
+    DEFAULT_FIRMWARE_VERSION,
+    FIRMWARE_VERSIONS,
+    V4_DPS_OPTIONS,
+    V5_DPS_OPTIONS,
+    DPS_MAPPINGS,
     RESULT_SUCCESS,
     RESULT_AUTH_FAILED,
     RESULT_NOT_FOUND,
     RESULT_CONNECTION_FAILED,
     RESULT_WAITING,
-    RESULT_CONNECTING
+    RESULT_CONNECTING,
+    CONF_BUTTON_DP,
+    CONF_MOTION_DP,
+    CONF_SHOW_ADVANCED
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -104,11 +114,38 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         # Connection successful, create entry
                         # We don't need MAC address anymore
                                 
-                        # Add default DPS map if not provided
-                        if CONF_DPS_MAP not in user_input:
-                            user_input[CONF_DPS_MAP] = DEFAULT_DPS_MAP
+                        # Create DPS map from button and motion selections
+                        button_dp = user_input.get(CONF_BUTTON_DP)
+                        motion_dp = user_input.get(CONF_MOTION_DP)
+                        
+                        # Create the DPS map
+                        user_input[CONF_DPS_MAP] = {
+                            "button": button_dp,
+                            "motion": motion_dp
+                        }
+                        
+                        # If advanced view is shown and custom DPS map is provided, use it
+                        if user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input:
+                            if isinstance(user_input[CONF_DPS_MAP], str):
+                                try:
+                                    import json
+                                    custom_dps_map = json.loads(user_input[CONF_DPS_MAP])
+                                    # Only update if it's a valid dict
+                                    if isinstance(custom_dps_map, dict):
+                                        user_input[CONF_DPS_MAP] = custom_dps_map
+                                except Exception as e:
+                                    _LOGGER.warning(f"Invalid custom DPS map, using dropdown selections: {e}")
+                                    
+                        _LOGGER.info(f"Creating entry for device at {host} with DPS map {user_input[CONF_DPS_MAP]}")
+                        
+                        # Clean up temporary fields not needed for storage
+                        if CONF_BUTTON_DP in user_input:
+                            del user_input[CONF_BUTTON_DP]
+                        if CONF_MOTION_DP in user_input:
+                            del user_input[CONF_MOTION_DP]
+                        if CONF_SHOW_ADVANCED in user_input:
+                            del user_input[CONF_SHOW_ADVANCED]
                             
-                        _LOGGER.info(f"Creating entry for device at {host}")
                         return self.async_create_entry(
                             title=user_input[CONF_NAME],
                             data=user_input
@@ -126,8 +163,33 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             default_name = user_input.get(CONF_NAME, default_name)
             default_port = user_input.get(CONF_PORT, default_port)
             
-        # Create a schema with defaults
-        schema = vol.Schema({
+        # Default firmware version
+        selected_firmware = user_input.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION) if user_input else DEFAULT_FIRMWARE_VERSION
+        
+        # Get DPS options based on firmware version
+        dps_options = V5_DPS_OPTIONS if selected_firmware == "Version 5" else V4_DPS_OPTIONS
+        
+        # Build dropdown options
+        button_dp_options = {opt["dp_id"]: opt["description"] for opt in dps_options["button"]}
+        motion_dp_options = {opt["dp_id"]: opt["description"] for opt in dps_options["motion"]}
+        
+        # Get default DPS values for the firmware version
+        default_mapping = DPS_MAPPINGS.get(selected_firmware, DEFAULT_DPS_MAP)
+        default_button_dp = user_input.get(CONF_BUTTON_DP, default_mapping.get("button"))
+        default_motion_dp = user_input.get(CONF_MOTION_DP, default_mapping.get("motion"))
+        
+        # Get show advanced setting
+        show_advanced = user_input.get(CONF_SHOW_ADVANCED, False) if user_input else False
+        
+        # Create JSON string representation of current DPS map based on selections
+        current_dps_map = {
+            "button": default_button_dp,
+            "motion": default_motion_dp
+        }
+        dps_map_json = json.dumps(current_dps_map)
+        
+        # Base schema
+        schema_dict = {
             vol.Required(CONF_NAME, default=default_name): str,
             vol.Required(CONF_DEVICE_ID): str,
             vol.Required(CONF_LOCAL_KEY): str,
@@ -138,7 +200,20 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_PROTOCOL_VERSION, default=DEFAULT_PROTOCOL_VERSION): vol.In(
                 PROTOCOL_VERSIONS
             ),
-        })
+            vol.Required(CONF_FIRMWARE_VERSION, default=DEFAULT_FIRMWARE_VERSION): vol.In(
+                FIRMWARE_VERSIONS
+            ),
+            vol.Required(CONF_BUTTON_DP, default=default_button_dp): vol.In(button_dp_options),
+            vol.Required(CONF_MOTION_DP, default=default_motion_dp): vol.In(motion_dp_options),
+            vol.Optional(CONF_SHOW_ADVANCED, default=show_advanced): bool,
+        }
+        
+        # Add advanced field if show_advanced is enabled
+        if show_advanced:
+            schema_dict[vol.Optional(CONF_DPS_MAP, default=dps_map_json)] = str
+            
+        # Create schema
+        schema = vol.Schema(schema_dict)
         
         _LOGGER.debug("Showing user form with schema keys: %s", list(schema.schema.keys()))
         
@@ -171,9 +246,23 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         config[CONF_PROTOCOL_VERSION] = selected_device["protocol_version"]
                         _LOGGER.info(f"Using discovered protocol version: {selected_device['protocol_version']}")
                             
-                    # Add default DPS map if not provided
-                    if CONF_DPS_MAP not in config:
-                        config[CONF_DPS_MAP] = DEFAULT_DPS_MAP
+                    # Set button_dp and motion_dp based on firmware version
+                    firmware_version = config.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION)
+                    default_mapping = DPS_MAPPINGS.get(firmware_version, DEFAULT_DPS_MAP)
+                    
+                    # If DPS_MAP is already in config, extract button and motion values
+                    if CONF_DPS_MAP in config and isinstance(config[CONF_DPS_MAP], dict):
+                        button_dp = config[CONF_DPS_MAP].get("button", default_mapping.get("button"))
+                        motion_dp = config[CONF_DPS_MAP].get("motion", default_mapping.get("motion"))
+                    else:
+                        button_dp = default_mapping.get("button")
+                        motion_dp = default_mapping.get("motion")
+                        
+                    # Create DPS map from button and motion selections
+                    config[CONF_DPS_MAP] = {
+                        "button": button_dp,
+                        "motion": motion_dp
+                    }
                     
                     _LOGGER.info(f"Creating entry for device at {config[CONF_HOST]}")
                     
@@ -483,6 +572,36 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
         errors = {}
         
         if user_input is not None:
+            # Check if user is just toggling the "Show Advanced Options" checkbox
+            if (CONF_SHOW_ADVANCED in user_input and 
+                user_input.get(CONF_SHOW_ADVANCED) != self.device_config.get(CONF_SHOW_ADVANCED, False)):
+                
+                # Update the show_advanced flag in our temporary config
+                temp_config = {**self.device_config}
+                temp_config[CONF_SHOW_ADVANCED] = user_input[CONF_SHOW_ADVANCED]
+                self.device_config = temp_config
+                
+                _LOGGER.debug(f"User toggled show_advanced to {user_input[CONF_SHOW_ADVANCED]}, reloading form")
+                
+                # Return the same form with updated show_advanced state
+                # Note: we need to rebuild the form now that show_advanced has changed
+                return await self.async_step_init()
+                
+            # Check if user changed the firmware version - if so, reload the form with the 
+            # appropriate DP options for that firmware version
+            if (CONF_FIRMWARE_VERSION in user_input and 
+                user_input.get(CONF_FIRMWARE_VERSION) != self.device_config.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION)):
+                
+                # Update the firmware version in our temporary config
+                temp_config = {**self.device_config}
+                temp_config[CONF_FIRMWARE_VERSION] = user_input[CONF_FIRMWARE_VERSION]
+                self.device_config = temp_config
+                
+                _LOGGER.debug(f"User changed firmware version to {user_input[CONF_FIRMWARE_VERSION]}, reloading form with updated options")
+                
+                # Return the same form with updated firmware version and corresponding DP options
+                return await self.async_step_init()
+            
             try:
                 # Update device configuration
                 updated_config = {**self.device_config}
@@ -496,18 +615,77 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
                     updated_config[CONF_PORT] = user_input[CONF_PORT]
                 if CONF_PROTOCOL_VERSION in user_input:
                     updated_config[CONF_PROTOCOL_VERSION] = user_input[CONF_PROTOCOL_VERSION]
-                if CONF_DPS_MAP in user_input:
+                if CONF_FIRMWARE_VERSION in user_input:
+                    updated_config[CONF_FIRMWARE_VERSION] = user_input[CONF_FIRMWARE_VERSION]
+                # Handle button and motion DP selections
+                firmware_version = user_input.get(CONF_FIRMWARE_VERSION, self.device_config.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION))
+                
+                # Check if we're in advanced mode
+                show_advanced = user_input.get(CONF_SHOW_ADVANCED, False)
+                
+                # Get firmware-specific defaults
+                firmware_defaults = DPS_MAPPINGS.get(firmware_version, {})
+                
+                # Create DPS map - start with firmware defaults
+                dps_map = {
+                    "button": firmware_defaults.get("button", "185"),
+                    "motion": firmware_defaults.get("motion", "115")
+                }
+                
+                if show_advanced:
+                    # In advanced mode, use the custom DPS map
+                    _LOGGER.debug("Using advanced mode for DPS settings")
+                    # We'll handle the JSON DPS map later in the code
+                else:
+                    # In simple mode, use the dropdown selections
+                    button_dp = user_input.get(CONF_BUTTON_DP)
+                    motion_dp = user_input.get(CONF_MOTION_DP)
+                    
+                    # Get the available options for the selected firmware version to validate
+                    dps_options = V5_DPS_OPTIONS if firmware_version == "Version 5" else V4_DPS_OPTIONS
+                    valid_button_dps = [opt["dp_id"] for opt in dps_options["button"]]
+                    valid_motion_dps = [opt["dp_id"] for opt in dps_options["motion"]]
+                    
+                    # Validate selections against firmware-specific options
+                    if button_dp and button_dp not in valid_button_dps:
+                        _LOGGER.warning(f"Selected button DP {button_dp} is not valid for {firmware_version}")
+                        errors[CONF_BUTTON_DP] = "invalid_dp_for_firmware"
+                    
+                    if motion_dp and motion_dp not in valid_motion_dps:
+                        _LOGGER.warning(f"Selected motion DP {motion_dp} is not valid for {firmware_version}")
+                        errors[CONF_MOTION_DP] = "invalid_dp_for_firmware"
+                    
+                    # If we have valid selections, update the DPS map
+                    if button_dp and not errors.get(CONF_BUTTON_DP):
+                        dps_map["button"] = button_dp
+                    if motion_dp and not errors.get(CONF_MOTION_DP):
+                        dps_map["motion"] = motion_dp
+                
+                # If advanced view is shown and custom DPS map is provided, use it
+                if user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input:
                     if isinstance(user_input[CONF_DPS_MAP], str):
                         try:
-                            # Convert string representation to dictionary
-                            import json
-                            dps_map = json.loads(user_input[CONF_DPS_MAP])
-                            updated_config[CONF_DPS_MAP] = dps_map
+                            custom_dps_map = json.loads(user_input[CONF_DPS_MAP])
+                            # Only update if it's a valid dict
+                            if isinstance(custom_dps_map, dict):
+                                dps_map = custom_dps_map
                         except Exception as e:
                             _LOGGER.error(f"Error parsing DPS map: {e}")
                             errors[CONF_DPS_MAP] = "invalid_dps_map"
-                    else:
-                        updated_config[CONF_DPS_MAP] = user_input[CONF_DPS_MAP]
+                
+                # Update the config with the final DPS map
+                updated_config[CONF_DPS_MAP] = dps_map
+                
+                # Clean up temporary fields not needed for long-term storage
+                if CONF_BUTTON_DP in updated_config:
+                    del updated_config[CONF_BUTTON_DP]
+                if CONF_MOTION_DP in updated_config:
+                    del updated_config[CONF_MOTION_DP]
+                
+                # Keep CONF_SHOW_ADVANCED to preserve form state between sessions
+                if CONF_SHOW_ADVANCED in user_input:
+                    updated_config[CONF_SHOW_ADVANCED] = user_input[CONF_SHOW_ADVANCED]
+                    _LOGGER.debug(f"Saved show_advanced = {user_input[CONF_SHOW_ADVANCED]} to config")
                 
                 # Validate connection with new settings if host and key are provided
                 if not errors and CONF_HOST in updated_config and CONF_LOCAL_KEY in updated_config:
@@ -545,8 +723,61 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
                 _LOGGER.exception(f"Unexpected error during reconfiguration: {e}")
                 errors["base"] = "unknown"
         
-        # Create schema with current values as defaults
-        schema = vol.Schema({
+        # Get current firmware version
+        firmware_version = self.device_config.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION)
+        _LOGGER.debug(f"Building form with firmware version: {firmware_version}")
+        
+        # Get DPS options based on firmware version
+        dps_options = V5_DPS_OPTIONS if firmware_version == "Version 5" else V4_DPS_OPTIONS
+        
+        # Build dropdown options
+        button_dp_options = {opt["dp_id"]: opt["description"] for opt in dps_options["button"]}
+        motion_dp_options = {opt["dp_id"]: opt["description"] for opt in dps_options["motion"]}
+        
+        # Log available options
+        _LOGGER.debug(f"Available button options for {firmware_version}: {button_dp_options}")
+        _LOGGER.debug(f"Available motion options for {firmware_version}: {motion_dp_options}")
+        
+        # Get current DPS map
+        current_dps_map = self.device_config.get(CONF_DPS_MAP, DEFAULT_DPS_MAP)
+        
+        # Get default DPs for this firmware version
+        firmware_defaults = DPS_MAPPINGS.get(firmware_version, {})
+        default_button_dp = firmware_defaults.get("button", "185")
+        default_motion_dp = firmware_defaults.get("motion", "115")
+        
+        # Extract button and motion DPs, falling back to firmware-specific defaults
+        current_button_dp = current_dps_map.get("button", default_button_dp)
+        current_motion_dp = current_dps_map.get("motion", default_motion_dp)
+        
+        # Validate that the current selections are in the available options for this firmware
+        # If not, use the first available option
+        if current_button_dp not in button_dp_options:
+            _LOGGER.debug(f"Current button DP {current_button_dp} not valid for {firmware_version}, using default")
+            current_button_dp = next(iter(button_dp_options.keys()), default_button_dp)
+            
+        if current_motion_dp not in motion_dp_options:
+            _LOGGER.debug(f"Current motion DP {current_motion_dp} not valid for {firmware_version}, using default")
+            current_motion_dp = next(iter(motion_dp_options.keys()), default_motion_dp)
+        
+        # Create JSON string representation
+        dps_map_json = json.dumps(current_dps_map)
+        
+        # Get show advanced setting (preserve state between form submissions)
+        # First check if it's in the current user input
+        if user_input and CONF_SHOW_ADVANCED in user_input:
+            show_advanced = user_input[CONF_SHOW_ADVANCED]
+        # Otherwise check if it was previously set in the config
+        elif self.device_config.get(CONF_SHOW_ADVANCED) is not None:
+            show_advanced = self.device_config.get(CONF_SHOW_ADVANCED)
+        # Default to False if not set anywhere
+        else:
+            show_advanced = False
+            
+        _LOGGER.debug(f"Show advanced options: {show_advanced}")
+        
+        # Create base schema dict
+        schema_dict = {
             vol.Optional(
                 CONF_LOCAL_KEY, 
                 default=self.device_config.get(CONF_LOCAL_KEY, "")
@@ -564,10 +795,33 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
                 default=self.device_config.get(CONF_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION)
             ): vol.In(PROTOCOL_VERSIONS),
             vol.Optional(
+                CONF_FIRMWARE_VERSION, 
+                default=self.device_config.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION)
+            ): vol.In(FIRMWARE_VERSIONS),
+            vol.Optional(CONF_SHOW_ADVANCED, default=show_advanced): bool,
+        }
+        
+        # Add either simple dropdowns or advanced field based on show_advanced setting
+        if show_advanced:
+            _LOGGER.debug("Adding advanced fields to form")
+            schema_dict[vol.Optional(
                 CONF_DPS_MAP,
-                default=str(self.device_config.get(CONF_DPS_MAP, DEFAULT_DPS_MAP)).replace("'", "\"")
-            ): str,
-        })
+                default=dps_map_json
+            )] = str
+        else:
+            # Only add the simple dropdown options if advanced mode is not enabled
+            schema_dict[vol.Optional(
+                CONF_BUTTON_DP,
+                default=current_button_dp
+            )] = vol.In(button_dp_options)
+            
+            schema_dict[vol.Optional(
+                CONF_MOTION_DP,
+                default=current_motion_dp
+            )] = vol.In(motion_dp_options)
+            
+        # Create schema
+        schema = vol.Schema(schema_dict)
         
         # Show the form
         return self.async_show_form(

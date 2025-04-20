@@ -12,6 +12,10 @@ CONF_LAST_IP = "last_ip"
 CONF_DPS_MAP = "dps_map"
 CONF_SUBNET = "subnet"
 CONF_PROTOCOL_VERSION = "protocol_version"
+CONF_FIRMWARE_VERSION = "firmware_version"
+CONF_BUTTON_DP = "button_dp"
+CONF_MOTION_DP = "motion_dp"
+CONF_SHOW_ADVANCED = "show_advanced"
 
 # Connection validation results
 RESULT_WAITING = "waiting"
@@ -30,6 +34,46 @@ DEFAULT_DPS_MAP = {
 
 # Protocol versions to try during discovery, in order of likelihood
 PROTOCOL_VERSIONS = ["3.3", "3.1", "3.4", "3.2"]
+
+# Firmware versions supported by the device
+FIRMWARE_VERSIONS = ["Version 4", "Version 5"]
+DEFAULT_FIRMWARE_VERSION = "Version 4"
+
+# DPS options for each firmware version
+V4_DPS_OPTIONS = {
+    "button": [
+        {"dp_id": "185", "description": "Alarm report (DP 185)"},
+        {"dp_id": "136", "description": "Doorbell active (DP 136)"}
+    ],
+    "motion": [
+        {"dp_id": "115", "description": "Motion detection (DP 115)"},
+        {"dp_id": "134", "description": "Motion alert (DP 134)"}
+    ]
+}
+
+V5_DPS_OPTIONS = {
+    "button": [
+        {"dp_id": "185", "description": "Alarm report (DP 185)"},
+        {"dp_id": "136", "description": "Doorbell active (DP 136)"},
+        {"dp_id": "154", "description": "Someone ring doorbell (DP 154)"}
+    ],
+    "motion": [
+        {"dp_id": "115", "description": "Motion detection (DP 115)"},
+        {"dp_id": "134", "description": "Motion alert (DP 134)"}
+    ]
+}
+
+# DPS mappings by firmware version
+DPS_MAPPINGS = {
+    "Version 4": {
+        "button": "185",
+        "motion": "115"
+    },
+    "Version 5": {
+        "button": "185",
+        "motion": "115"
+    }
+}
 
 ATTR_DEVICE_ID = "device_id"
 ATTR_IMAGE_DATA = "image_data"

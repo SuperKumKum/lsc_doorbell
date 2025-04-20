@@ -935,8 +935,56 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
         Args:
             dp_index(int):   dps index to set
             value: new value for the dps index
+            
+        Returns:
+            The response from the device, or None if the command failed
         """
-        return await self.exchange(CONTROL, {str(dp_index): value})
+        self.debug(f"Setting DP {dp_index} to value: {value}")
+        try:
+            # Make sure dp_index is a string
+            dp_str = str(dp_index)
+            
+            # Send the command
+            result = await self.exchange(CONTROL, {dp_str: value})
+            
+            # Log the result for debugging
+            self.debug(f"Set DP result: {result}")
+            
+            # Update our internal cache with the new value
+            # This helps with verification even if the device doesn't respond properly
+            if dp_str not in self.dps_cache or self.dps_cache[dp_str] != value:
+                self.debug(f"Updating dps_cache for {dp_str} from {self.dps_cache.get(dp_str, 'None')} to {value}")
+                self.dps_cache[dp_str] = value
+            
+            return result
+        except Exception as e:
+            self.error(f"Error setting DP {dp_index} to {value}: {str(e)}")
+            return None
+        
+    async def get_dp(self, dp_index):
+        """
+        Get value of a specific datapoint.
+        
+        Args:
+            dp_index(str): datapoint index to query
+        
+        Returns:
+            Value of the datapoint or None if not available
+        """
+        self.debug(f"Getting value for DP {dp_index}")
+        # First check if it's in the cache
+        if self.dps_cache and dp_index in self.dps_cache:
+            return self.dps_cache[dp_index]
+            
+        # Not in cache, request it specifically
+        self.add_dps_to_request(dp_index)
+        try:
+            status = await self.status()
+            if status and "dps" in status and dp_index in status["dps"]:
+                return status["dps"][dp_index]
+        except Exception as e:
+            self.debug(f"Error getting DP {dp_index}: {e}")
+        return None
 
     async def set_dps(self, dps):
         """Set values for a set of datapoints."""
