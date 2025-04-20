@@ -314,17 +314,7 @@ class TuyaDoorbellListener:
         device_name = config[CONF_NAME].lower().replace(" ", "_")
         device_specific_event = f"{EVENT_DEVICE_DISCONNECTED}_{device_name}"
         
-        # Fire both generic and device-specific events for compatibility
-        self.hub.hass.bus.async_fire(
-            EVENT_DEVICE_DISCONNECTED, 
-            {
-                ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
-                ATTR_TIMESTAMP: datetime.now().isoformat(),
-                "name": config[CONF_NAME]
-            }
-        )
-        
-        # Also fire a device-specific event for multi-device setups
+        # Only fire device-specific event
         self.hub.hass.bus.async_fire(
             device_specific_event, 
             {
@@ -465,18 +455,7 @@ class LscTuyaHub:
                 device_name = config[CONF_NAME].lower().replace(" ", "_")
                 device_specific_event = f"{EVENT_DEVICE_CONNECTED}_{device_name}"
                 
-                # Fire both generic and device-specific events for compatibility
-                self.hass.bus.async_fire(
-                    EVENT_DEVICE_CONNECTED, 
-                    {
-                        ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
-                        ATTR_TIMESTAMP: datetime.now().isoformat(),
-                        "host": host,
-                        "name": config[CONF_NAME]
-                    }
-                )
-                
-                # Also fire a device-specific event for multi-device setups
+                # Only fire device-specific event 
                 self.hass.bus.async_fire(
                     device_specific_event, 
                     {
@@ -950,13 +929,10 @@ class LscTuyaHub:
                 
                 _LOGGER.info("Firing event %s with data: %s (hash: %s)", event_type, event_data, current_hash[:8])
                 
-                # Fire both the generic event (for backward compatibility)
-                self.hass.bus.async_fire(event_type, event_data)
-                
-                # And the device-specific event (for multi-device setups)
+                # Only fire the device-specific event
                 self.hass.bus.async_fire(device_specific_event, event_data)
                 
-                _LOGGER.debug("Event fired successfully (generic and device-specific)")
+                _LOGGER.debug(f"Device-specific event fired successfully: {device_specific_event}")
 
         except Exception as e:
             _LOGGER.error("Unexpected error handling DP %s: %s", dp, str(e))
