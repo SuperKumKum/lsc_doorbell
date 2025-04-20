@@ -44,7 +44,7 @@ V4_DP_DEFINITIONS = {
         dp_type=DPType.BOOLEAN,
         category=DPCategory.STATUS_FUNCTION,
         icon="mdi:led-on",
-        momentary=True  # Mark as momentary switch
+        momentary=False  # This is a permanent switch, not momentary
     ),
     "103": DPDefinition(
         id="103",

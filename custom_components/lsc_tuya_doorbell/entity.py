@@ -324,7 +324,10 @@ class TuyaDoorbellEntity(RestoreEntity, Entity):
                 self._attr_native_value = None
 
         # Update the entity state in Home Assistant
-        self.async_write_ha_state()
+        if self.hass:
+            self.hass.add_job(self.async_write_ha_state)
+        else:
+            self.async_write_ha_state()
 
     async def async_refresh_state(self):
         """Refresh the state from the device."""

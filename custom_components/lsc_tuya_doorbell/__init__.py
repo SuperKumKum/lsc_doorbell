@@ -791,7 +791,7 @@ class LscTuyaHub:
         button_dp = str(dps_map.get('button', "185"))
         motion_dp = str(dps_map.get('motion', "115"))
         
-        _LOGGER.debug("Expected DPs - Button: %s, Motion: %s", button_dp, motion_dp)
+        # _LOGGER.debug("Expected DPs - Button: %s, Motion: %s", button_dp, motion_dp)
         
         # Calculate hash of the new value
         current_hash = self._calculate_hash(value)
@@ -799,7 +799,7 @@ class LscTuyaHub:
         
         # Check if we've seen this exact payload before
         if previous_hash == current_hash:
-            _LOGGER.info("Ignoring duplicate update for DP %s (hash: %s)", dp, current_hash[:8])
+            # _LOGGER.info("Ignoring duplicate update for DP %s (hash: %s)", dp, current_hash[:8])
             return
         
         # Update the hash for this DP
@@ -1097,14 +1097,7 @@ class LscTuyaHub:
         import uuid
         update_id = str(uuid.uuid4())[:8]
         
-        # Check if this DP is a momentary control by checking entity registry
-        is_momentary = False
-        if dp_id_str in self._registered_entities:
-            for entity in self._registered_entities[dp_id_str]:
-                if hasattr(entity, '_is_momentary') and entity._is_momentary:
-                    is_momentary = True
-                    _LOGGER.debug(f"[{update_id}] DP {dp_id} is registered as a momentary control")
-                    break
+        # No momentary switches in this implementation
         
         # Track commands for this DP to avoid duplicates
         dp_key = f"dp_{dp_id_str}"
@@ -1133,30 +1126,9 @@ class LscTuyaHub:
             result = await self._protocol.set_dp(value, dp_id_str)
             _LOGGER.info(f"[{update_id}] Set DP command sent, result: {result}")
             
-            # For momentary controls, we don't need to verify since they'll revert immediately
-            if is_momentary:
-                _LOGGER.debug(f"[{update_id}] Not verifying momentary control since it will auto-revert")
-                
-                # Update entities with the requested value
-                if dp_id_str in self._registered_entities:
-                    for entity in self._registered_entities[dp_id_str]:
-                        if hasattr(entity, 'handle_update'):
-                            # For momentary entities, let the entity handle the update itself
-                            # It will maintain its own virtual state
-                            if hasattr(entity, '_is_momentary') and entity._is_momentary:
-                                _LOGGER.debug(f"[{update_id}] Letting momentary entity manage its own state")
-                                pass  # Entity will manage its own state via virtual state
-                            else:
-                                entity.handle_update(value)
-                
-                # Delay any status fetch to avoid a race condition where we might
-                # catch the control in its "on" state before it reverts
-                await asyncio.sleep(3.0)
-                
-                # Return success directly for momentary controls
-                return result is not None
+            # No momentary switch handling needed
             
-            # For non-momentary controls, verify the change
+            # Verify the command was processed correctly
             verified = False
             max_retries = 3
             retry_count = 0
@@ -1188,8 +1160,12 @@ class LscTuyaHub:
                             # For example, 1 and True are considered equivalent in Tuya protocol
                             values_match = False
                             
+                            # Special handling for recording mode and similar controls - they sometimes invert values or report inconsistently
+                            if dp_id_str in ["151"]:  # Recording Mode (DP 151)
+                                _LOGGER.debug(f"[{update_id}] Special handling for problematic DP {dp_id_str}: accepting any value change as success")
+                                values_match = True  # Accept any response as valid for these problematic controls
                             # Direct match
-                            if new_value == value:
+                            elif new_value == value:
                                 values_match = True
                                 _LOGGER.debug(f"[{update_id}] Value matched exactly: {value} ({type(value).__name__}) == {new_value} ({type(new_value).__name__})")
                             # Boolean equivalence - boolean True/False sent, device returned 1/0
@@ -1200,6 +1176,14 @@ class LscTuyaHub:
                             elif (value == 1 and new_value is True) or (value == 0 and new_value is False):
                                 values_match = True
                                 _LOGGER.debug(f"[{update_id}] Integer-boolean equivalence: sent {value} (int), device returned {new_value} (bool)")
+                            # Integer/string equivalence - integer sent, device returned string version of the integer
+                            elif isinstance(value, int) and isinstance(new_value, str) and new_value.isdigit() and int(new_value) == value:
+                                values_match = True
+                                _LOGGER.debug(f"[{update_id}] Integer-string equivalence: sent {value} (int), device returned {new_value} (string)")
+                            # String/integer equivalence - string sent, device returned integer version of the string
+                            elif isinstance(value, str) and value.isdigit() and isinstance(new_value, int) and int(value) == new_value:
+                                values_match = True
+                                _LOGGER.debug(f"[{update_id}] String-integer equivalence: sent {value} (string), device returned {new_value} (int)")
                                 
                             if not values_match:
                                 _LOGGER.warning(f"[{update_id}] Device reported different value after update: set {value} ({type(value)}), got {new_value} ({type(new_value)})")
@@ -1225,9 +1209,13 @@ class LscTuyaHub:
                     
             # Update entities with the actual value (verified or not)
             if dp_id_str in self._registered_entities:
+                # For recently updated switches, we don't want to override their state during the verify/retry phase
+                # as it will appear to flicker in the UI. The switch entity will handle this logic.
                 _LOGGER.debug(f"[{update_id}] Updating {len(self._registered_entities[dp_id_str])} registered entities with value: {actual_value}")
+                
                 for entity in self._registered_entities[dp_id_str]:
                     if hasattr(entity, 'handle_update'):
+                        # Each entity will decide if it should accept this update based on its last manual update time
                         entity.handle_update(actual_value)
                         _LOGGER.debug(f"[{update_id}] Updated entity {entity.entity_id if hasattr(entity, 'entity_id') else entity}")
             
@@ -1257,25 +1245,46 @@ class LscTuyaHub:
                         if new_value is not None:
                             # Check equivalence using same logic as above
                             values_match = False
-                            if new_value == value:
+                            
+                            # Special handling for recording mode and similar controls - they sometimes invert values or report inconsistently
+                            if dp_id_str in ["151"]:  # Recording Mode (DP 151)
+                                _LOGGER.debug(f"[{update_id}] Special handling for problematic DP {dp_id_str}: accepting any value change as success")
+                                values_match = True  # Accept any response as valid for these problematic controls
+                            elif new_value == value:
                                 values_match = True
                             elif isinstance(value, bool) and (new_value == 1 and value is True or new_value == 0 and value is False):
                                 values_match = True
                             elif (value == 1 and new_value is True) or (value == 0 and new_value is False):
                                 values_match = True
+                            # Integer/string equivalence - integer sent, device returned string version of the integer
+                            elif isinstance(value, int) and isinstance(new_value, str) and new_value.isdigit() and int(new_value) == value:
+                                values_match = True
+                                _LOGGER.debug(f"[{update_id}] Integer-string equivalence: sent {value} (int), device returned {new_value} (string)")
+                            # String/integer equivalence - string sent, device returned integer version of the string
+                            elif isinstance(value, str) and value.isdigit() and isinstance(new_value, int) and int(value) == new_value:
+                                values_match = True
+                                _LOGGER.debug(f"[{update_id}] String-integer equivalence: sent {value} (string), device returned {new_value} (int)")
                                 
                             if values_match:
                                 _LOGGER.info(f"[{update_id}] Alternative method succeeded, DP {dp_id} now = {new_value}")
                                 verified = True
                             else:
                                 _LOGGER.warning(f"[{update_id}] Alternative method failed, final device value = {new_value} != {value}")
+                                
+                                # For recording mode and similar problematic DPs, accept any response and assume success
+                                if dp_id_str in ["151"]:  # Recording Mode (DP 151)
+                                    _LOGGER.info(f"[{update_id}] Special handling for DP {dp_id_str}: assuming success despite different reported value")
+                                    verified = True
+                                    # For problematic controls, trust the user's requested value over device-reported value
+                                    actual_value = value
                                 # Even if verification failed, consider it successful for momentary devices
                                 # This prevents endless retries when the device intentionally reverts
-                                _LOGGER.info(f"[{update_id}] Assuming command was processed despite different reported state")
-                                verified = True
-                                # Override the entity value to match what we tried to set
-                                # The device might report a different state but we want the UI to match user intent
-                                actual_value = value
+                                else:
+                                    _LOGGER.info(f"[{update_id}] Assuming command was processed despite different reported state")
+                                    verified = True
+                                    # Override the entity value to match what we tried to set
+                                    # The device might report a different state but we want the UI to match user intent
+                                    actual_value = value
                         else:
                             _LOGGER.warning(f"[{update_id}] DP {dp_id} not found in status response after alternative method")
                     else:

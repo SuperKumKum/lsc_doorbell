@@ -81,6 +81,21 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
         
         # For numeric values, ensure we try with a proper string conversion    
         try:
+            # Special handling for problematic controls
+            if self._dp_definition.code in ["motion_sensitivity", "basic_nightvision", "record_mode"]:
+                # Force conversion to string - these controls can return mixed types
+                if isinstance(self._state, (int, float, bool)):
+                    state_str = str(int(self._state))
+                elif isinstance(self._state, str) and self._state.isdigit():
+                    state_str = str(int(self._state))
+                else:
+                    state_str = str(self._state)
+                
+                # Look up the option by key
+                if state_str in self._dp_definition.options:
+                    _LOGGER.debug(f"Found option for special control {self._dp_definition.code}: {state_str} -> {self._dp_definition.options[state_str]}")
+                    return self._dp_definition.options[state_str]
+            
             # First check if the current state matches any option value directly
             # This handles cases where the state is already the display value (like "Low", "Auto")
             if isinstance(self._state, str) and self._state in self._attr_options:
@@ -104,7 +119,7 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
                     return self._dp_definition.options[int_key]
                     
             # If we get here, we couldn't map the value
-            _LOGGER.warning(f"Could not map state {self._state} to option in {self._dp_definition.options}")
+            _LOGGER.warning(f"Could not map state {self._state} (type: {type(self._state)}) to option in {self._dp_definition.options}")
             return None
         except (ValueError, TypeError) as e:
             _LOGGER.warning(f"Error converting state to option: {e}")
@@ -204,10 +219,29 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
         
         # For Motion Sensitivity, Night Vision, and Recording Mode, ensure we send an INTEGER
         if self._dp_definition.code in ["motion_sensitivity", "basic_nightvision", "record_mode"]:
+            # Always convert to integer for these controls, as the device expects integers
             value_to_send = int(int_key) if isinstance(int_key, (str, int)) and str(int_key).isdigit() else int_key
             _LOGGER.info(f"Sending special formatted value for {self._dp_definition.code}: {value_to_send} (type: {type(value_to_send)})")
-            # Send command to device
-            success = await self._hub.set_dp(self._dp_definition.id, value_to_send)
+            
+            # For recording mode, always force the value to integer regardless of what the device returns
+            recording_mode = self._dp_definition.code == "record_mode"
+            if recording_mode:
+                _LOGGER.info(f"Special handling for recording mode (DP {self._dp_definition.id}): forcing integer type")
+            
+            # Ensure the string value isn't sent by mistake
+            if isinstance(value_to_send, int):
+                # Send command to device with special handling for recording mode
+                success = await self._hub.set_dp(self._dp_definition.id, value_to_send)
+                
+                # Force the current option to update immediately for problematic controls
+                if recording_mode:
+                    self._state = value_to_send
+                    self._attr_current_option = option
+                    if self.hass:
+                        self.hass.add_job(self.async_write_ha_state)
+            else:
+                _LOGGER.warning(f"Could not convert {int_key} to integer for {self._dp_definition.code}, using original value")
+                success = await self._hub.set_dp(self._dp_definition.id, int_key)
         else:
             # Send command to device normally
             success = await self._hub.set_dp(self._dp_definition.id, int_key)
