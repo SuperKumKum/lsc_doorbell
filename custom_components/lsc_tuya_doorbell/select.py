@@ -47,9 +47,6 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
         """Initialize the select entity."""
         super().__init__(hub, device_id, dp_definition)
         
-        # Set name to include entity type for better identification in automations
-        self._attr_name = f"{self._base_name} [Select]"
-        
         # Set up options for select entity
         self._attr_options = list(dp_definition.options.values())
         self._attr_current_option = None
