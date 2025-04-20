@@ -115,8 +115,13 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         # We don't need MAC address anymore
                                 
                         # Create DPS map from button and motion selections
-                        button_dp = user_input.get(CONF_BUTTON_DP)
-                        motion_dp = user_input.get(CONF_MOTION_DP)
+                        # Get default values from constants if not specified
+                        default_mapping = DPS_MAPPINGS.get(
+                            user_input.get(CONF_FIRMWARE_VERSION, DEFAULT_FIRMWARE_VERSION), 
+                            DEFAULT_DPS_MAP
+                        )
+                        button_dp = user_input.get(CONF_BUTTON_DP, default_mapping.get("button"))
+                        motion_dp = user_input.get(CONF_MOTION_DP, default_mapping.get("motion"))
                         
                         # Create the DPS map
                         user_input[CONF_DPS_MAP] = {
@@ -125,7 +130,7 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         }
                         
                         # If advanced view is shown and custom DPS map is provided, use it
-                        if user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input:
+                        if user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input and user_input[CONF_DPS_MAP]:
                             if isinstance(user_input[CONF_DPS_MAP], str):
                                 try:
                                     import json
@@ -175,10 +180,16 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         # Get default DPS values for the firmware version
         default_mapping = DPS_MAPPINGS.get(selected_firmware, DEFAULT_DPS_MAP)
-        default_button_dp = user_input.get(CONF_BUTTON_DP, default_mapping.get("button"))
-        default_motion_dp = user_input.get(CONF_MOTION_DP, default_mapping.get("motion"))
+        # Use safe access to user_input since it could be None
+        default_button_dp = default_mapping.get("button")
+        default_motion_dp = default_mapping.get("motion")
         
-        # Get show advanced setting
+        # If user_input exists, override defaults with user values
+        if user_input:
+            default_button_dp = user_input.get(CONF_BUTTON_DP, default_button_dp)
+            default_motion_dp = user_input.get(CONF_MOTION_DP, default_motion_dp)
+            
+        # Get show advanced setting (safe access)
         show_advanced = user_input.get(CONF_SHOW_ADVANCED, False) if user_input else False
         
         # Create JSON string representation of current DPS map based on selections
@@ -638,8 +649,10 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
                     # We'll handle the JSON DPS map later in the code
                 else:
                     # In simple mode, use the dropdown selections
-                    button_dp = user_input.get(CONF_BUTTON_DP)
-                    motion_dp = user_input.get(CONF_MOTION_DP)
+                    # Use safe defaults based on firmware version
+                    firmware_defaults = DPS_MAPPINGS.get(firmware_version, DEFAULT_DPS_MAP)
+                    button_dp = user_input.get(CONF_BUTTON_DP, firmware_defaults.get("button"))
+                    motion_dp = user_input.get(CONF_MOTION_DP, firmware_defaults.get("motion"))
                     
                     # Get the available options for the selected firmware version to validate
                     dps_options = V5_DPS_OPTIONS if firmware_version == "Version 5" else V4_DPS_OPTIONS
@@ -662,8 +675,9 @@ class LscTuyaOptionsFlow(config_entries.OptionsFlow):
                         dps_map["motion"] = motion_dp
                 
                 # If advanced view is shown and custom DPS map is provided, use it
-                if user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input:
-                    if isinstance(user_input[CONF_DPS_MAP], str):
+                if user_input and user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input:
+                    # Make sure we have a valid DPS_MAP value
+                    if isinstance(user_input[CONF_DPS_MAP], str) and user_input[CONF_DPS_MAP].strip():
                         try:
                             custom_dps_map = json.loads(user_input[CONF_DPS_MAP])
                             # Only update if it's a valid dict
