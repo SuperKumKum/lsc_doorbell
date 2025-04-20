@@ -96,21 +96,14 @@ To use this integration, you'll need your doorbell's device ID and local key. He
 
 ## 🔄 Working with Events
 
-The integration fires these events you can use in your automations:
-
-- `lsc_tuya_doorbell_button_press`: When someone presses the doorbell button
-- `lsc_tuya_doorbell_motion`: When motion is detected
-- `lsc_tuya_doorbell_connected`: When the doorbell device connects to Home Assistant
-- `lsc_tuya_doorbell_disconnected`: When the doorbell device disconnects from Home Assistant
-
-When you have multiple doorbell devices installed, the integration also fires device-specific events that include the device name in the event type:
+The integration fires device-specific events for each doorbell device that include the device name in the event type:
 
 - `lsc_tuya_doorbell_button_press_front_door`: Button press on the "Front Door" doorbell
 - `lsc_tuya_doorbell_motion_front_door`: Motion detected by the "Front Door" doorbell
-- `lsc_tuya_doorbell_connected_side_door`: "Side Door" doorbell connected
-- `lsc_tuya_doorbell_disconnected_side_door`: "Side Door" doorbell disconnected
+- `lsc_tuya_doorbell_connected_front_door`: "Front Door" doorbell connected
+- `lsc_tuya_doorbell_disconnected_front_door`: "Front Door" doorbell disconnected
 
-This makes it easier to create automations specific to each doorbell device.
+The naming format is `lsc_tuya_doorbell_<event_type>_<device_name>` where `<device_name>` is the lowercase, underscore-separated version of your configured device name. This makes it easier to create automations specific to each doorbell device.
 
 ### 📸 Displaying Doorbell Images
 
@@ -264,7 +257,7 @@ automation:
   - alias: "Doorbell Press - Notification with Image"
     trigger:
       platform: event
-      event_type: lsc_tuya_doorbell_button_press
+      event_type: lsc_tuya_doorbell_button_press_front_door  # Use your specific device name
     action:
       # Flash lights to indicate someone is at the door
       - service: light.turn_on
@@ -328,7 +321,7 @@ automation:
   - alias: "Motion Detection - Send Notification with Image"
     trigger:
       platform: event
-      event_type: lsc_tuya_doorbell_motion
+      event_type: lsc_tuya_doorbell_motion_front_door  # Use your specific device name
     action:
       # Wait for image URL to be processed and available in sensor
       - delay:
@@ -378,7 +371,7 @@ automation:
   - alias: "Doorbell Disconnection Alert"
     trigger:
       platform: event
-      event_type: lsc_tuya_doorbell_disconnected
+      event_type: lsc_tuya_doorbell_disconnected_front_door  # Use your specific device name
     action:
       - service: notify.mobile_app
         data:
@@ -396,9 +389,9 @@ automation:
   - alias: "Doorbell Connection Status Logger"
     trigger:
       - platform: event
-        event_type: lsc_tuya_doorbell_connected
+        event_type: lsc_tuya_doorbell_connected_front_door  # Use your specific device name
       - platform: event
-        event_type: lsc_tuya_doorbell_disconnected
+        event_type: lsc_tuya_doorbell_disconnected_front_door  # Use your specific device name
     action:
       - service: persistent_notification.create
         data:
@@ -442,10 +435,14 @@ automation:
           data:
             channel: "Side Door"
             
-  - alias: "All Doorbell Presses - Common Actions"
+  - alias: "Multiple Doorbell Common Actions"
     trigger:
+      # Trigger for any of your doorbells - list all of them
       platform: event
-      event_type: lsc_tuya_doorbell_button_press
+      event_type:
+        - lsc_tuya_doorbell_button_press_front_door
+        - lsc_tuya_doorbell_button_press_side_door
+        - lsc_tuya_doorbell_button_press_back_door
     action:
       - service: light.turn_on
         target:
@@ -568,7 +565,7 @@ This project is licensed under the MIT License.
 ## 📋 Release Notes
 
 ### 2025-04-20 Updates
-- Added device-specific events for multi-doorbell setups (e.g., `lsc_tuya_doorbell_button_press_front_door`)
+- Converted to device-specific-only events for multi-doorbell setups (e.g., `lsc_tuya_doorbell_button_press_front_door`)
 - Fixed thread safety issue with `async_write_ha_state()` using `hass.add_job()`
 - Improved Entity naming to include device name for clearer identification
 - Added configuration field description for device name highlighting its use in entity names
