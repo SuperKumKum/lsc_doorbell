@@ -373,8 +373,11 @@ class LscTuyaHub:
         async def check_heartbeat(now=None):
             """Check if heartbeats are being received."""
             if self._protocol:
-                # Try sending a heartbeat if it's been more than 60 seconds
-                await self.heartbeat()
+                # Just send a heartbeat without doing a full status refresh
+                # This prevents the device from resetting values
+                await self._protocol._send_request(self._protocol.HEART_BEAT)
+                self.last_heartbeat = datetime.now().isoformat()
+                _LOGGER.debug("Sent heartbeat (timestamp: %s)", self.last_heartbeat)
                 
         self._heartbeat_timer = async_track_time_interval(
             self.hass, check_heartbeat, timedelta(seconds=60)
@@ -1137,11 +1140,22 @@ class LscTuyaHub:
                 try:
                     # Wait a moment for the device to process the change
                     # Increasing wait time with each retry
-                    await asyncio.sleep(0.5 + (retry_count * 0.5))
+                    await asyncio.sleep(1.0 + (retry_count * 1.0))
                     
-                    # Get the updated status to verify the change
+                    # Get the updated status to verify the change - but only request the specific DP we're interested in
+                    # This reduces the chance of the device resetting other values
                     _LOGGER.debug(f"[{update_id}] Verifying DP update (attempt {retry_count+1}/{max_retries})")
-                    status = await self._protocol.status()
+                    try:
+                        # Try getting just this DP value first to minimize impact
+                        new_value = await self._protocol.get_dp(dp_id_str)
+                        if new_value is not None:
+                            status = {dp_id_str: new_value}
+                        else:
+                            # Fall back to full status if get_dp doesn't work
+                            status = await self._protocol.status()
+                    except Exception:
+                        # Fall back to full status if get_dp fails
+                        status = await self._protocol.status()
                     
                     if status:
                         # Check if the status contains the DP directly, or in a dps dictionary
@@ -1228,10 +1242,20 @@ class LscTuyaHub:
                     _LOGGER.info(f"[{update_id}] Sent alternative DP update command")
                     
                     # Wait for it to take effect
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(2.0)
                     
-                    # Try one final verification
-                    status = await self._protocol.status()
+                    # Try one final verification - but only check the specific DP
+                    try:
+                        # Try getting just this DP value first to minimize impact
+                        new_value = await self._protocol.get_dp(dp_id_str)
+                        if new_value is not None:
+                            status = {dp_id_str: new_value}
+                        else:
+                            # Fall back to full status if get_dp doesn't work
+                            status = await self._protocol.status()
+                    except Exception:
+                        # Fall back to full status if get_dp fails
+                        status = await self._protocol.status()
                     if status:
                         # Check if the status contains the DP directly, or in a dps dictionary
                         new_value = None
@@ -1311,20 +1335,26 @@ class LscTuyaHub:
             return False
             
         try:
-            result = await self._protocol.heartbeat()
+            # Just send a simple heartbeat without requesting a full status update
+            # This prevents the device from resetting all values to defaults
+            await self._protocol._send_request(self._protocol.HEART_BEAT)
+            
             # Update the heartbeat timestamp
             self.last_heartbeat = datetime.now().isoformat()
-            _LOGGER.debug("Heartbeat result: %s, timestamp: %s", result, self.last_heartbeat)
+            _LOGGER.debug("Heartbeat sent, timestamp: %s", self.last_heartbeat)
             
-            # Update the status sensor to reflect the new heartbeat time
+            # Only update connection status sensors, not all sensors
+            # This avoids triggering status requests that reset values
             if DOMAIN in self.hass.data and self.entry.entry_id in self.hass.data[DOMAIN]:
-                # Find and update all sensors for this device
+                # Find and update connection status sensors only
                 device_id = self.entry.data[CONF_DEVICE_ID]
                 
-                # Try to update all sensors that might exist for this device
+                # Only update connection_status sensors to avoid triggering a status update cascade
                 for entity_id in self.hass.states.async_entity_ids("sensor"):
-                    if entity_id.startswith("sensor.lsc_tuya_") and device_id[-4:] in entity_id:
-                        _LOGGER.debug("Requesting update for sensor %s", entity_id)
+                    if (entity_id.startswith("sensor.lsc_tuya_") and 
+                        device_id[-4:] in entity_id and 
+                        "connection_status" in entity_id):
+                        _LOGGER.debug("Requesting update for connection status sensor %s", entity_id)
                         await self.hass.services.async_call(
                             "homeassistant", "update_entity", 
                             {"entity_id": entity_id}, blocking=False
