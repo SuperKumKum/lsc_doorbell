@@ -107,12 +107,50 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
         
         # Schedule a refresh of this entity's state after a brief delay
         # This helps ensure we have the latest state from the device
-        async def delayed_refresh():
-            import asyncio
-            await asyncio.sleep(1)  # Small delay to avoid overwhelming the device
-            await self.async_refresh_state()
+        import asyncio
+        
+        # For problematic controls, use a more aggressive refresh approach
+        if self._dp_definition.code in ["motion_sensitivity", "basic_nightvision", "record_mode"]:
+            _LOGGER.info(f"Using special refresh for {self._dp_definition.code} (DP {self._dp_definition.id})")
             
-        self.hass.async_create_task(delayed_refresh())
+            async def special_refresh():
+                # Wait for connection to stabilize
+                await asyncio.sleep(1)
+                
+                # Direct query for this specific DP
+                if self._hub._protocol:
+                    # Try multiple times with increasing delays
+                    for attempt in range(3):
+                        try:
+                            # First get status to refresh all DPs
+                            status = await self._hub._protocol.status()
+                            if status and "dps" in status and self._dp_definition.id in status["dps"]:
+                                value = status["dps"][self._dp_definition.id]
+                                _LOGGER.info(f"Got value for {self.entity_id} from status: {value}")
+                                await self._hub._handle_dps_update(self._dp_definition.id, value)
+                                return
+                                
+                            # Then try direct query
+                            value = await self._hub._protocol.get_dp(self._dp_definition.id)
+                            if value is not None:
+                                _LOGGER.info(f"Got direct value for {self.entity_id}: {value}")
+                                # Make sure value is an integer
+                                if isinstance(value, str) and value.isdigit():
+                                    value = int(value)
+                                await self._hub._handle_dps_update(self._dp_definition.id, value)
+                                return
+                        except Exception as e:
+                            _LOGGER.warning(f"Error in attempt {attempt+1} getting value for {self.entity_id}: {e}")
+                            await asyncio.sleep(1 * (attempt + 1))  # Increasing delay
+                
+            self.hass.async_create_task(special_refresh())
+        else:
+            # Standard refresh for other entities
+            async def delayed_refresh():
+                await asyncio.sleep(1)  # Small delay to avoid overwhelming the device
+                await self.async_refresh_state()
+                
+            self.hass.async_create_task(delayed_refresh())
             
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
@@ -140,16 +178,30 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
             int_key = key_found
             _LOGGER.debug(f"Using non-integer key for option: {key_found}")
         
+        # Special handling for known problematic controls
+        if self._dp_definition.code in ["motion_sensitivity", "basic_nightvision", "record_mode"]:
+            _LOGGER.info(f"Special handling for {self._dp_definition.code}")
+            # Force integer for these controls
+            if isinstance(int_key, str) and int_key.isdigit():
+                int_key = int(int_key)
+        
         # Update state immediately in UI for better responsiveness
         self._state = int_key  # Store raw value
         self._attr_current_option = option  # Store display value
         self.async_write_ha_state()
         
         # Log the device state before update
-        _LOGGER.info(f"Setting {self.entity_id} ({self._dp_definition.code}) to {option} (raw value: {int_key})")
+        _LOGGER.info(f"Setting {self.entity_id} ({self._dp_definition.code}) to {option} (raw value: {int_key})")  
         
-        # Send command to device
-        success = await self._hub.set_dp(self._dp_definition.id, int_key)
+        # For Motion Sensitivity, Night Vision, and Recording Mode, ensure we send an INTEGER
+        if self._dp_definition.code in ["motion_sensitivity", "basic_nightvision", "record_mode"]:
+            value_to_send = int(int_key) if isinstance(int_key, (str, int)) and str(int_key).isdigit() else int_key
+            _LOGGER.info(f"Sending special formatted value for {self._dp_definition.code}: {value_to_send} (type: {type(value_to_send)})")
+            # Send command to device
+            success = await self._hub.set_dp(self._dp_definition.id, value_to_send)
+        else:
+            # Send command to device normally
+            success = await self._hub.set_dp(self._dp_definition.id, int_key)
         
         if success:
             _LOGGER.info(f"Select option for {self.entity_id} set successfully")

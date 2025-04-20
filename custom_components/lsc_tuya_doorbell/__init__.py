@@ -794,10 +794,28 @@ class LscTuyaHub:
                 if hasattr(entity, '_is_momentary'):
                     is_momentary = entity._is_momentary
                 
+                # Special handling for problematic enum controls (motion sensitivity, night vision, etc.)
+                special_enum = False
+                if hasattr(entity, '_dp_definition') and hasattr(entity._dp_definition, 'code'):
+                    if entity._dp_definition.code in ["motion_sensitivity", "basic_nightvision", "record_mode"]:
+                        special_enum = True
+                        # Convert value to int if it's a string number
+                        if isinstance(value, str) and value.isdigit():
+                            _LOGGER.info(f"Converting string value to int for {entity._dp_definition.code}: {value}")
+                            value = int(value)
+                        elif isinstance(value, bool):
+                            # Convert boolean to int (0 or 1)
+                            _LOGGER.info(f"Converting boolean value to int for {entity._dp_definition.code}: {value}")
+                            value = 1 if value else 0
+                
                 # For momentary controls, add special handling to track/restore state
                 if is_momentary:
                     _LOGGER.debug(f"Handling update for momentary control {entity.entity_id}: {value}")
                     # Let entity decide how to handle this update (may maintain virtual state)
+                
+                # Special logging for problematic enum controls
+                if special_enum:
+                    _LOGGER.info(f"Updating special enum {entity.entity_id} with value: {value} (type: {type(value).__name__})")
                 
                 # Pass update to entity's handler
                 if hasattr(entity, 'handle_update'):
