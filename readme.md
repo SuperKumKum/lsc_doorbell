@@ -103,6 +103,15 @@ The integration fires these events you can use in your automations:
 - `lsc_tuya_doorbell_connected`: When the doorbell device connects to Home Assistant
 - `lsc_tuya_doorbell_disconnected`: When the doorbell device disconnects from Home Assistant
 
+When you have multiple doorbell devices installed, the integration also fires device-specific events that include the device name in the event type:
+
+- `lsc_tuya_doorbell_button_press_front_door`: Button press on the "Front Door" doorbell
+- `lsc_tuya_doorbell_motion_front_door`: Motion detected by the "Front Door" doorbell
+- `lsc_tuya_doorbell_connected_side_door`: "Side Door" doorbell connected
+- `lsc_tuya_doorbell_disconnected_side_door`: "Side Door" doorbell disconnected
+
+This makes it easier to create automations specific to each doorbell device.
+
 ### 📸 Displaying Doorbell Images
 
 When a doorbell event occurs, the integration will automatically extract image URLs from various payload formats and make them available in your Home Assistant. The image URLs are stored in the connection status sensor attributes and can be displayed using Lovelace cards.
@@ -403,6 +412,55 @@ automation:
           notification_id: "doorbell_status_{{ trigger.event.event_type.split('_')[-1] }}"
 ```
 
+### Example Automation: Using Device-Specific Events with Multiple Doorbells
+
+When you have multiple doorbells, you can create automations that respond to specific devices:
+
+```yaml
+automation:
+  - alias: "Front Door Button Press"
+    trigger:
+      platform: event
+      event_type: lsc_tuya_doorbell_button_press_front_door
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Front Door Alert"
+          message: "Someone is at the front door"
+          data:
+            channel: "Front Door"
+            
+  - alias: "Side Door Button Press"
+    trigger:
+      platform: event
+      event_type: lsc_tuya_doorbell_button_press_side_door
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Side Door Alert"
+          message: "Someone is at the side door"
+          data:
+            channel: "Side Door"
+            
+  - alias: "All Doorbell Presses - Common Actions"
+    trigger:
+      platform: event
+      event_type: lsc_tuya_doorbell_button_press
+    action:
+      - service: light.turn_on
+        target:
+          entity_id: light.entry_hall
+        data:
+          brightness_pct: 100
+          
+      # Flash all lights for any doorbell
+      - service: light.turn_on
+        target:
+          entity_id: light.living_room
+        data:
+          flash: short
+```
+
 ## 🔍 Troubleshooting
 
 Having issues? Try these steps:
@@ -506,6 +564,28 @@ Special thanks to the Home Assistant community for their excellent documentation
 This project is licensed under the MIT License.
 
 ---
+
+## 📋 Release Notes
+
+### 2025-04-20 Updates
+- Added device-specific events for multi-doorbell setups (e.g., `lsc_tuya_doorbell_button_press_front_door`)
+- Fixed thread safety issue with `async_write_ha_state()` using `hass.add_job()`
+- Improved Entity naming to include device name for clearer identification
+- Added configuration field description for device name highlighting its use in entity names
+- Fixed dropdown options for Night Vision and Motion Sensitivity (properly mapping values)
+- Fixed entity state handling for select/dropdown controls
+- Changed volume sliders to scale from 1-10 instead of 0-100
+- Updated Device Volume to display as fixed value rather than percentage
+- Fixed momentary switch behavior for Indicator switch (DP 101)
+- Enhanced base64 data decoding for better display in entity states
+- Fixed config flow errors in integration setup
+- Fixed missing datetime import in switch.py
+- Fixed key error when reloading integration
+- Removed redundant image URL attributes from Connection Status sensor
+
+### Known Issues
+- Some Tuya doorbells may use different datapoints than the default ones
+- Image URL extraction works only with certain Tuya cloud formats
 
 ## 🚀 Built with human ingenuity & a dash of AI wizardry
 
