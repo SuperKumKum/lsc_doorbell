@@ -219,9 +219,16 @@ class LscTuyaStatusSensor(SensorEntity):
             model=f"Video Doorbell {self._hub.entry.data.get(CONF_FIRMWARE_VERSION, 'Unknown')}",
         )
         
-        # Set up event listeners
-        hub.hass.bus.async_listen(EVENT_BUTTON_PRESS, self._handle_doorbell_event)
-        hub.hass.bus.async_listen(EVENT_MOTION_DETECT, self._handle_motion_event)
+        # Get device name for device-specific events
+        device_name = hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}").lower().replace(" ", "_")
+        
+        # Set up event listeners for device-specific events only
+        device_button_event = f"{EVENT_BUTTON_PRESS}_{device_name}"
+        device_motion_event = f"{EVENT_MOTION_DETECT}_{device_name}"
+        
+        # Listen only to this device's specific events
+        hub.hass.bus.async_listen(device_button_event, self._handle_doorbell_event)
+        hub.hass.bus.async_listen(device_motion_event, self._handle_motion_event)
     
     @property
     def native_value(self):
@@ -230,26 +237,38 @@ class LscTuyaStatusSensor(SensorEntity):
     
     def _handle_doorbell_event(self, event):
         """Handle doorbell event."""
-        if event.data.get(ATTR_DEVICE_ID) == self._device_id:
-            # Increment the counter
-            self._event_counters["doorbell"] += 1
+        # Since we're now listening only to device-specific events, we don't need to check the device ID
+        # Increment the counter
+        self._event_counters["doorbell"] += 1
+        
+        # Store timestamp
+        self._last_doorbell_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
+        
+        # Extract image URL if available
+        if "image_url" in event.data:
+            self._attr_extra_state_attributes["last_doorbell_image"] = event.data["image_url"]
+            self._attr_extra_state_attributes["doorbell_image_url"] = event.data["image_url"]
             
-            # Store timestamp
-            self._last_doorbell_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
-            
-            # Update the entity state to reflect new data - using event loop to avoid thread safety issues
+        # Update the entity state to reflect new data - using event loop to avoid thread safety issues
+        if self.hass:
             self.hass.add_job(self.async_write_ha_state)
     
     def _handle_motion_event(self, event):
         """Handle motion event."""
-        if event.data.get(ATTR_DEVICE_ID) == self._device_id:
-            # Increment the counter
-            self._event_counters["motion"] += 1
+        # Since we're now listening only to device-specific events, we don't need to check the device ID
+        # Increment the counter
+        self._event_counters["motion"] += 1
+        
+        # Store timestamp
+        self._last_motion_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
+        
+        # Extract image URL if available
+        if "image_url" in event.data:
+            self._attr_extra_state_attributes["last_motion_image"] = event.data["image_url"]
+            self._attr_extra_state_attributes["motion_image_url"] = event.data["image_url"]
             
-            # Store timestamp
-            self._last_motion_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
-            
-            # Update the entity state to reflect new data - using event loop to avoid thread safety issues
+        # Update the entity state to reflect new data - using event loop to avoid thread safety issues
+        if self.hass:
             self.hass.add_job(self.async_write_ha_state)
             
     async def async_update(self):
