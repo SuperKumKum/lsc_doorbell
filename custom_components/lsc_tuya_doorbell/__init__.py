@@ -375,9 +375,16 @@ class LscTuyaHub:
             if self._protocol:
                 # Just send a heartbeat without doing a full status refresh
                 # This prevents the device from resetting values
-                await self._protocol._send_request(self._protocol.HEART_BEAT)
-                self.last_heartbeat = datetime.now().isoformat()
-                _LOGGER.debug("Sent heartbeat (timestamp: %s)", self.last_heartbeat)
+                try:
+                    # Use the heartbeat method which is a minimal command
+                    await self._protocol.heartbeat()
+                    self.last_heartbeat = datetime.now().isoformat()
+                    _LOGGER.debug("Sent heartbeat (timestamp: %s)", self.last_heartbeat)
+                except Exception as e:
+                    _LOGGER.warning(f"Error sending heartbeat: {str(e)}")
+                    if self._protocol is None:
+                        _LOGGER.info("Protocol disconnected during heartbeat, scheduling reconnect")
+                        self.hass.async_create_task(self._schedule_reconnect())
                 
         self._heartbeat_timer = async_track_time_interval(
             self.hass, check_heartbeat, timedelta(seconds=60)
@@ -1337,7 +1344,7 @@ class LscTuyaHub:
         try:
             # Just send a simple heartbeat without requesting a full status update
             # This prevents the device from resetting all values to defaults
-            await self._protocol._send_request(self._protocol.HEART_BEAT)
+            await self._protocol.heartbeat()
             
             # Update the heartbeat timestamp
             self.last_heartbeat = datetime.now().isoformat()
