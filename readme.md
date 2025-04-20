@@ -15,6 +15,9 @@ Available at Action stores across the Netherlands and other European countries, 
 - **Smart Automations**: Trigger lights, announcements, and other actions when someone's at your door
 - **Reliable Connection**: Maintains persistent connection with automatic reconnection
 - **Multiple Protocol Support**: Compatible with various Tuya protocol versions (3.1, 3.2, 3.3, 3.4) for broader device compatibility
+- **Doorbell Image Support**: Automatically extracts image URLs from doorbell events for display in Home Assistant
+- **Advanced Payload Decoding**: Handles multiple data formats to ensure image compatibility
+- **Event Tracking**: Tracks doorbell and motion events with timestamps and counters
 
 ## 📋 Requirements
 
@@ -100,50 +103,263 @@ The integration fires these events you can use in your automations:
 - `lsc_tuya_doorbell_connected`: When the doorbell device connects to Home Assistant
 - `lsc_tuya_doorbell_disconnected`: When the doorbell device disconnects from Home Assistant
 
-### Example Automation: Flash Lights When Doorbell Pressed
+### 📸 Displaying Doorbell Images
+
+When a doorbell event occurs, the integration will automatically extract image URLs from various payload formats and make them available in your Home Assistant. The image URLs are stored in the connection status sensor attributes and can be displayed using Lovelace cards.
+
+#### Connection Status Sensor Attributes
+
+The connection status sensor (`sensor.lsc_tuya_doorbell_connection_status`) now includes the following attributes:
+
+- `doorbell_count`: Total number of doorbell button press events
+- `motion_count`: Total number of motion detection events
+- `last_doorbell_time`: Timestamp of the last doorbell press
+- `last_motion_time`: Timestamp of the last motion detection
+- `last_doorbell_image`: URL of the image from the last doorbell press
+- `last_motion_image`: URL of the image from the last motion detection
+- `doorbell_image_url`: Same as last_doorbell_image, formatted for Lovelace cards
+- `motion_image_url`: Same as last_motion_image, formatted for Lovelace cards
+
+#### Lovelace Card for Doorbell Images
+
+```yaml
+type: picture-entity
+entity: sensor.lsc_tuya_doorbell_connection_status
+image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'doorbell_image_url') }}"
+name: Last Doorbell Image
+show_state: false
+show_name: true
+camera_view: auto
+```
+
+#### Lovelace Card for Motion Detection Images
+
+```yaml
+type: picture-entity
+entity: sensor.lsc_tuya_doorbell_connection_status
+image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'motion_image_url') }}"
+name: Last Motion Image
+show_state: false
+show_name: true
+camera_view: auto
+```
+
+#### Picture-Elements Card with Latest Event Information
+
+This card shows both doorbell and motion images along with event counts and timestamps:
+
+```yaml
+type: picture-elements
+image: /local/images/doorbell-background.jpg
+elements:
+  - type: picture
+    entity: sensor.lsc_tuya_doorbell_connection_status
+    image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'doorbell_image_url') }}"
+    style:
+      top: 25%
+      left: 25%
+      width: 40%
+      border-radius: 8px
+  - type: state-label
+    entity: sensor.lsc_tuya_doorbell_connection_status
+    attribute: doorbell_count
+    prefix: "Doorbell Events: "
+    style:
+      top: 50%
+      left: 25%
+  - type: state-label
+    entity: sensor.lsc_tuya_doorbell_connection_status
+    attribute: last_doorbell_time
+    prefix: "Last Press: "
+    style:
+      top: 55%
+      left: 25%
+  - type: picture
+    entity: sensor.lsc_tuya_doorbell_connection_status
+    image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'motion_image_url') }}"
+    style:
+      top: 25%
+      left: 75%
+      width: 40%
+      border-radius: 8px
+  - type: state-label
+    entity: sensor.lsc_tuya_doorbell_connection_status
+    attribute: motion_count
+    prefix: "Motion Events: "
+    style:
+      top: 50%
+      left: 75%
+  - type: state-label
+    entity: sensor.lsc_tuya_doorbell_connection_status
+    attribute: last_motion_time
+    prefix: "Last Motion: "
+    style:
+      top: 55%
+      left: 75%
+```
+
+You can also include these images in notifications:
+
+```yaml
+service: notify.mobile_app
+data:
+  title: "Someone at the Door!"
+  message: "Doorbell pressed at {{ now().strftime('%H:%M:%S') }}"
+  data:
+    image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'doorbell_image_url') }}"
+    # Optional - use a different notification channel
+    channel: "Doorbell Alerts"
+    # Optional - make the notification sticky
+    sticky: true
+```
+
+#### Multi-Camera Dashboard Card
+
+This example creates a more comprehensive dashboard with both doorbell and motion images:
+
+```yaml
+type: vertical-stack
+cards:
+  - type: markdown
+    content: >
+      # Doorbell Status
+      Status: {{ states('sensor.lsc_tuya_doorbell_connection_status') }}
+  - type: horizontal-stack
+    cards:
+      - type: picture-entity
+        entity: sensor.lsc_tuya_doorbell_connection_status
+        name: Last Doorbell Image
+        image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'doorbell_image_url') }}"
+        camera_view: auto
+      - type: picture-entity
+        entity: sensor.lsc_tuya_doorbell_connection_status
+        name: Last Motion Image
+        image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'motion_image_url') }}"
+        camera_view: auto
+  - type: glance
+    entities:
+      - entity: sensor.lsc_tuya_doorbell_connection_status
+        name: Status
+      - entity: sensor.lsc_tuya_doorbell_connection_status
+        name: Doorbell Events
+        attribute: doorbell_count
+      - entity: sensor.lsc_tuya_doorbell_connection_status
+        name: Motion Events
+        attribute: motion_count
+```
+
+### Example Automation: Doorbell Press with Image Notification
 
 ```yaml
 automation:
-  - alias: "Doorbell Press - Flash Lights"
+  - alias: "Doorbell Press - Notification with Image"
     trigger:
       platform: event
       event_type: lsc_tuya_doorbell_button_press
     action:
+      # Flash lights to indicate someone is at the door
       - service: light.turn_on
-        entity_id: light.porch_light
+        target:
+          entity_id: light.porch_light
         data:
           flash: short
+          
+      # Wait briefly for the image URL to be processed
+      - delay:
+          seconds: 1
+          
+      # Get current count of doorbell presses today
+      - service: counter.increment
+        target:
+          entity_id: counter.daily_doorbell_presses
+          
+      # Announce on speakers
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.living_room_speaker
+        data:
+          volume_level: 0.6
+      - service: tts.google_translate_say
+        target:
+          entity_id: media_player.living_room_speaker
+        data:
+          message: "Someone is at the door"
+          
+      # Send rich notification with doorbell image
       - service: notify.mobile_app
         data:
-          title: "Doorbell"
-          message: "Someone is at the door!"
+          title: "🔔 Doorbell Pressed"
+          message: >
+            Someone is at the door!
+            Time: {{ now().strftime('%H:%M:%S') }}
+            Event #{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'doorbell_count') }}
+          data:
+            image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'doorbell_image_url') }}"
+            # Make it a high priority notification
+            priority: high
+            # Group all doorbell notifications with the same tag
+            tag: "doorbell_press"
+            # Make it sticky so user has to dismiss it
+            sticky: true
+            # Use a specific channel (Android)
+            channel: "Doorbell Alerts"
+            # Add action buttons (Android)
+            actions:
+              - action: "UNLOCK_DOOR"
+                title: "Unlock Door"
+                uri: "/api/services/lock/unlock"
+              - action: "IGNORE"
+                title: "Ignore"
 ```
 
-### Example Automation: Record Video When Motion Detected
+### Example Automation: Motion Detection Notification with Image
 
 ```yaml
 automation:
-  - alias: "Motion Detection - Record Video"
+  - alias: "Motion Detection - Send Notification with Image"
     trigger:
       platform: event
       event_type: lsc_tuya_doorbell_motion
     action:
-      # Turn on camera recording for 30 seconds
-      - service: camera.record
-        target:
-          entity_id: camera.front_door
-        data:
-          filename: "/config/www/recordings/motion_{{ now().strftime('%Y%m%d_%H%M%S') }}.mp4"
-          duration: 30
-      # Send notification with thumbnail
+      # Wait for image URL to be processed and available in sensor
+      - delay:
+          seconds: 1
+          
+      # Send notification with motion image
       - service: notify.mobile_app
         data:
           title: "Motion Detected"
-          message: "Motion detected at the front door"
+          message: "Motion detected at {{ now().strftime('%H:%M:%S') }} (Event #{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'motion_count') }})"
           data:
-            image: "/local/snapshots/front_door_latest.jpg"
+            image: "{{ state_attr('sensor.lsc_tuya_doorbell_connection_status', 'motion_image_url') }}"
             ttl: 0
             priority: high
+            # Optional - group notifications with the same tag
+            tag: "doorbell_motion"
+            # Optional - make it sticky
+            sticky: true
+            
+      # Turn on porch light for 2 minutes when motion is detected at night
+      - service: light.turn_on
+        target:
+          entity_id: light.porch_light
+        data:
+          brightness_pct: 100
+        condition:
+          condition: sun
+          after: sunset
+          before: sunrise
+          
+      # Turn off light after 2 minutes
+      - delay:
+          minutes: 2
+      - service: light.turn_off
+        target:
+          entity_id: light.porch_light
+        condition:
+          condition: sun
+          after: sunset
+          before: sunrise
 ```
 
 ### Example Automation: Get Notified When Doorbell Disconnects
@@ -203,6 +419,38 @@ Having issues? Try these steps:
 - Verify your device ID and local key are correct
 - Check if your doorbell is using the default port (6668)
 - If your doorbell disappears periodically, try setting a static IP for it in your router
+
+### Troubleshooting Image URLs
+
+If your doorbell images aren't appearing in Home Assistant:
+
+1. Check the debug logs to see if image URLs are being extracted:
+   ```yaml
+   # In configuration.yaml
+   logger:
+     default: info
+     logs:
+       custom_components.lsc_tuya_doorbell: debug
+   ```
+
+2. Look for log entries containing "Extracted image URL" to see if URLs are being found.
+
+3. Verify that images exist in the attributes of the connection status sensor:
+   ```
+   Developer Tools → States → Search for "lsc_tuya_doorbell_connection_status"
+   ```
+
+4. If no image URLs are being found, try pressing the doorbell button multiple times to send different types of payloads.
+
+5. Some Tuya doorbell models use different payload formats. The integration now supports multiple formats:
+   - Standard Tuya cloud storage format with bucket and files
+   - Direct URL in 'url' field
+   - URL in 'image_url' field
+   - Cloud image with fileId and timeStamp
+   - Image paths in any string field
+   - Nested objects with URLs
+
+6. If you identify a new image URL format not handled by the integration, please report it in the GitHub issues.
 
 ### Protocol Version Troubleshooting
 

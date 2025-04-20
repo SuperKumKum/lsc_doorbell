@@ -1,4 +1,6 @@
-# LSC Tuya Doorbell Development Guidelines
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 Home Assistant custom component for LSC Smart Connect video doorbells using the Tuya protocol.
@@ -12,26 +14,23 @@ pip install -r requirements.txt  # netifaces>=0.11.0
 # Install development dependencies
 pip install pytest pytest-homeassistant-custom-component pylint flake8
 
-# Test direct device connection
-python test_doorbell.py --ip <doorbell_ip> --id <device_id> --key <local_key>
-
 # Lint code
 flake8 custom_components/
 pylint custom_components/
+
+# Run all tests 
+pytest
+
+# Run a single test
+pytest tests/test_file.py::test_specific_function
 ```
 
 ## Debugging Commands
 ```bash
-# Enable debug logging in configuration.yaml
-logger:
-  default: info
-  logs:
-    custom_components.lsc_tuya_doorbell: debug
-
 # Monitor logs in real-time
 tail -f /config/home-assistant.log | grep lsc_tuya_doorbell
 
-# Test device connectivity
+# Test device connectivity 
 nc -vz <doorbell_ip> 6668
 ```
 
@@ -43,11 +42,4 @@ nc -vz <doorbell_ip> 6668
 - **Naming**: Use snake_case for variables/functions, PascalCase for classes
 - **Error Handling**: Catch specific exceptions, log appropriately
 - **Logging**: Use self._LOGGER with appropriate level (debug, info, warning, error)
-
-## Project Structure
-- `__init__.py`: Component setup and initialization
-- `config_flow.py`: UI configuration flow
-- `const.py`: Constants and default values
-- `network.py`: Tuya device communication
-- `sensor.py`: Sensor entity implementation
-- `pytuya/`: Local implementation of Tuya protocol
+- **Formatting**: 4 spaces for indentation, 120 character line limit
