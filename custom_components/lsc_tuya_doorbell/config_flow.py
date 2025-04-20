@@ -133,7 +133,7 @@ class LscTuyaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         if user_input.get(CONF_SHOW_ADVANCED, False) and CONF_DPS_MAP in user_input and user_input[CONF_DPS_MAP]:
                             if isinstance(user_input[CONF_DPS_MAP], str):
                                 try:
-                                    import json
+                                    # Use the already imported json module, don't import it again
                                     custom_dps_map = json.loads(user_input[CONF_DPS_MAP])
                                     # Only update if it's a valid dict
                                     if isinstance(custom_dps_map, dict):
