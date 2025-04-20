@@ -131,16 +131,17 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
             )
             return
             
-        # Get the existing hub
-        hub = hass.data[DOMAIN].get(entry.entry_id)
-        if hub:
-            # Save cached data before unloading
-            await hub._save_dps_hashes()
-            
-            # Close existing connections
-            if hub._protocol:
-                await hub._protocol.close()
-                hub._protocol = None
+        # Get the existing hub - check if DOMAIN exists in hass.data first
+        if DOMAIN in hass.data:
+            hub = hass.data[DOMAIN].get(entry.entry_id)
+            if hub:
+                # Save cached data before unloading
+                await hub._save_dps_hashes()
+                
+                # Close existing connections
+                if hub._protocol:
+                    await hub._protocol.close()
+                    hub._protocol = None
         
         # Unload platforms
         try:
@@ -176,13 +177,22 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Unload a config entry."""
-    hub = hass.data[DOMAIN].pop(entry.entry_id)
+    # Check if entry exists in our data dict (might have been already removed)
+    if DOMAIN not in hass.data or entry.entry_id not in hass.data.get(DOMAIN, {}):
+        _LOGGER.warning(f"Trying to unload entry {entry.entry_id} which was not found in hass.data")
+        return True
     
-    # Save DPS hashes to storage before unloading
-    await hub._save_dps_hashes()
-    
-    if hub._protocol:
-        await hub._protocol.close()
+    # Get the hub and remove the entry
+    try:
+        hub = hass.data[DOMAIN].pop(entry.entry_id)
+        
+        # Save DPS hashes to storage before unloading
+        await hub._save_dps_hashes()
+        
+        if hub._protocol:
+            await hub._protocol.close()
+    except Exception as e:
+        _LOGGER.error(f"Error unloading hub: {e}")
     
     # Unload all platforms
     return await hass.config_entries.async_unload_platforms(
