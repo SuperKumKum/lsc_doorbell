@@ -62,6 +62,9 @@ class TuyaDoorbellBinarySensor(TuyaDoorbellEntity, BinarySensorEntity):
         """Initialize the binary sensor."""
         super().__init__(hub, device_id, dp_definition)
         
+        # Set name to include entity type for better identification in automations
+        self._attr_name = f"{self._base_name} [Binary Sensor]"
+        
         # Set device class based on DP code
         if "motion" in dp_definition.code:
             self._attr_device_class = BinarySensorDeviceClass.MOTION
@@ -104,7 +107,9 @@ class DoorbellMotionSensor(BinarySensorEntity):
         """Initialize the sensor."""
         self._hub = hub
         self._device_id = device_id
-        self._attr_name = f"Motion Detection"
+        # Get device name from config entry
+        device_name = self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}")
+        self._attr_name = f"{device_name} Motion Detection [Event Sensor]"
         self._attr_unique_id = f"{device_id}_motion_event"
         self._attr_device_class = BinarySensorDeviceClass.MOTION
         self._state = False
@@ -173,7 +178,9 @@ class DoorbellButtonSensor(BinarySensorEntity):
         """Initialize the sensor."""
         self._hub = hub
         self._device_id = device_id
-        self._attr_name = f"Doorbell Button"
+        # Get device name from config entry
+        device_name = self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}")
+        self._attr_name = f"{device_name} Doorbell Button [Event Sensor]"
         self._attr_unique_id = f"{device_id}_button_event"
         self._attr_device_class = BinarySensorDeviceClass.OCCUPANCY
         self._state = False

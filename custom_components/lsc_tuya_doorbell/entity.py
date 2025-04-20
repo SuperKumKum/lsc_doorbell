@@ -22,8 +22,10 @@ class TuyaDoorbellEntity(RestoreEntity, Entity):
         # Get device name from config entry
         device_name = self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}")
         
-        # Set entity name to include device name
-        self._attr_name = f"{device_name} {dp_definition.name}"
+        # Set entity name to include device name and categorize by entity type
+        # We'll add the specific entity type in each subclass (switch, sensor, etc.)
+        self._base_name = f"{device_name} {dp_definition.name}"
+        self._attr_name = self._base_name  # Will be overridden in subclasses
         
         # Create unique_id that includes device_id and dp_id for state restoration
         self._attr_unique_id = f"{device_id}_{dp_definition.id}"

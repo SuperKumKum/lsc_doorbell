@@ -88,6 +88,9 @@ class TuyaDoorbellSensor(TuyaDoorbellEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(hub, device_id, dp_definition)
         
+        # Set name to include entity type for better identification in automations
+        self._attr_name = f"{self._base_name} [Sensor]"
+        
         # Set device class based on DP code
         if "volume" in dp_definition.code:
             self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -193,8 +196,8 @@ class LscTuyaStatusSensor(SensorEntity):
         # Get device name from config entry
         device_name = self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}")
         
-        # Set entity name to include device name
-        self._attr_name = f"{device_name} Connection Status"
+        # Set entity name to include entity type for better identification in automations
+        self._attr_name = f"{device_name} Connection Status [Sensor]"
         self._attr_unique_id = f"{device_id}_connection_status"
         
         # Home Assistant will automatically create the entity_id based on the device_name

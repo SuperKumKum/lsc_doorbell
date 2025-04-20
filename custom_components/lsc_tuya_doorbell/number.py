@@ -47,6 +47,9 @@ class TuyaDoorbellNumber(TuyaDoorbellEntity, NumberEntity):
         """Initialize the number entity."""
         super().__init__(hub, device_id, dp_definition)
         
+        # Set name to include entity type for better identification in automations
+        self._attr_name = f"{self._base_name} [Number]"
+        
         # Set up number characteristics
         self._attr_native_min_value = dp_definition.min_value if dp_definition.min_value is not None else 0
         self._attr_native_max_value = dp_definition.max_value if dp_definition.max_value is not None else 100

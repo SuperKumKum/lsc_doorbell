@@ -49,6 +49,9 @@ class TuyaDoorbellSwitch(TuyaDoorbellEntity, SwitchEntity):
         """Initialize the switch."""
         super().__init__(hub, device_id, dp_definition)
         
+        # Set name to include entity type for better identification in automations
+        self._attr_name = f"{self._base_name} [Switch]"
+        
         # Store whether this is a momentary switch
         self._is_momentary = getattr(dp_definition, 'momentary', False)
         
