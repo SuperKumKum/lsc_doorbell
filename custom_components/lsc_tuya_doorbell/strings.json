@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "data": {
-          "name": "Name",
+          "name": "Device Name (used for all entity names)",
           "device_id": "Device ID",
           "local_key": "Local Key",
           "host": "IP Address or Subnet (e.g. 192.168.1.0/24)",

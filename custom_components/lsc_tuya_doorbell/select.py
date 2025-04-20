@@ -56,8 +56,12 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
             self._state != "unknown" and 
             isinstance(self._state, (int, str, bool))):
             try:
-                # Try with string conversion first
-                if str(self._state) in dp_definition.options:
+                # Check if the state value is already the display option
+                if isinstance(self._state, str) and self._state in self._attr_options:
+                    self._attr_current_option = self._state
+                    _LOGGER.debug(f"Found direct option match for {self._state}")
+                # Try with string conversion first - maps key to value
+                elif str(self._state) in dp_definition.options:
                     self._attr_current_option = dp_definition.options[str(self._state)]
                     _LOGGER.debug(f"Found option for value {self._state} -> {self._attr_current_option}")
                 # Maybe it's a numeric value but stored as int
@@ -77,7 +81,12 @@ class TuyaDoorbellSelect(TuyaDoorbellEntity, SelectEntity):
         
         # For numeric values, ensure we try with a proper string conversion    
         try:
-            # Try to look up by string first
+            # First check if the current state matches any option value directly
+            # This handles cases where the state is already the display value (like "Low", "Auto")
+            if isinstance(self._state, str) and self._state in self._attr_options:
+                return self._state
+                
+            # Try to look up by string first - maps key to value
             state_str = str(self._state)
             if state_str in self._dp_definition.options:
                 return self._dp_definition.options[state_str]

@@ -189,16 +189,23 @@ class LscTuyaStatusSensor(SensorEntity):
         """Initialize the status sensor."""
         self._hub = hub
         self._device_id = device_id
-        self._attr_name = "Connection Status"
+        
+        # Get device name from config entry
+        device_name = self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}")
+        
+        # Set entity name to include device name
+        self._attr_name = f"{device_name} Connection Status"
         self._attr_unique_id = f"{device_id}_connection_status"
+        
+        # Home Assistant will automatically create the entity_id based on the device_name
+        # and entity class, which will result in sensor.device_name_entity_name format
+        
         self._attr_icon = "mdi:connection"
         self._last_heartbeat = None
         
         # Store the latest event data
         self._last_doorbell_time = None
-        self._last_doorbell_image = None
         self._last_motion_time = None
-        self._last_motion_image = None
         self._event_counters = {
             "doorbell": 0,
             "motion": 0
@@ -222,7 +229,7 @@ class LscTuyaStatusSensor(SensorEntity):
         return "Connected" if self._hub._protocol else "Disconnected"
     
     def _handle_doorbell_event(self, event):
-        """Handle doorbell event with image URL."""
+        """Handle doorbell event."""
         if event.data.get(ATTR_DEVICE_ID) == self._device_id:
             # Increment the counter
             self._event_counters["doorbell"] += 1
@@ -230,27 +237,17 @@ class LscTuyaStatusSensor(SensorEntity):
             # Store timestamp
             self._last_doorbell_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
             
-            # Store image URL if available
-            if "image_url" in event.data:
-                self._last_doorbell_image = event.data["image_url"]
-                _LOGGER.info(f"Stored doorbell image URL: {self._last_doorbell_image}")
-            
             # Update the entity state to reflect new data - using event loop to avoid thread safety issues
             self.hass.add_job(self.async_write_ha_state)
     
     def _handle_motion_event(self, event):
-        """Handle motion event with image URL."""
+        """Handle motion event."""
         if event.data.get(ATTR_DEVICE_ID) == self._device_id:
             # Increment the counter
             self._event_counters["motion"] += 1
             
             # Store timestamp
             self._last_motion_time = event.data.get(ATTR_TIMESTAMP, "Unknown")
-            
-            # Store image URL if available
-            if "image_url" in event.data:
-                self._last_motion_image = event.data["image_url"]
-                _LOGGER.info(f"Stored motion image URL: {self._last_motion_image}")
             
             # Update the entity state to reflect new data - using event loop to avoid thread safety issues
             self.hass.add_job(self.async_write_ha_state)
@@ -289,15 +286,6 @@ class LscTuyaStatusSensor(SensorEntity):
         if self._last_motion_time:
             attrs["last_motion_time"] = self._last_motion_time
         
-        # Include image URLs if available
-        if self._last_doorbell_image:
-            attrs["last_doorbell_image"] = self._last_doorbell_image
-            # Add a proxy URL that can be used in Lovelace cards
-            attrs["doorbell_image_url"] = self._last_doorbell_image
-            
-        if self._last_motion_image:
-            attrs["last_motion_image"] = self._last_motion_image
-            # Add a proxy URL that can be used in Lovelace cards
-            attrs["motion_image_url"] = self._last_motion_image
+        # We're removing all image URL attributes as requested
             
         return attrs

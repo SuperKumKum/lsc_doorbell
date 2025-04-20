@@ -18,8 +18,19 @@ class TuyaDoorbellEntity(RestoreEntity, Entity):
         self._device_id = device_id
         self._dp_definition = dp_definition
         self._state = None
-        self._attr_name = f"{dp_definition.name}"
+        
+        # Get device name from config entry
+        device_name = self._hub.entry.data.get(CONF_NAME, f"LSC Doorbell {device_id[-4:]}")
+        
+        # Set entity name to include device name
+        self._attr_name = f"{device_name} {dp_definition.name}"
+        
+        # Create unique_id that includes device_id and dp_id for state restoration
         self._attr_unique_id = f"{device_id}_{dp_definition.id}"
+        
+        # Home Assistant will automatically create the entity_id based on the device_name
+        # and entity class, which will result in sensor.device_name_entity_name format
+        
         self._attr_icon = dp_definition.icon
 
         # Set up device info
@@ -272,12 +283,33 @@ class TuyaDoorbellEntity(RestoreEntity, Entity):
         # For select entities, also update current_option
         if hasattr(self, '_attr_current_option') and hasattr(self._dp_definition, 'options'):
             try:
-                if value is not None and str(value) in self._dp_definition.options:
-                    self._attr_current_option = self._dp_definition.options[str(value)]
-                    _LOGGER.debug(f"Updated select option to: {self._attr_current_option}")
+                # First check if value is already an option display value (like "Low", "Auto")
+                if value is not None and isinstance(value, str):
+                    option_values = list(self._dp_definition.options.values())
+                    if value in option_values:
+                        self._attr_current_option = value
+                        _LOGGER.debug(f"Found direct option match for update: {value}")
+                        # Continue with normal update flow
+                    elif str(value) in self._dp_definition.options:
+                        self._attr_current_option = self._dp_definition.options[str(value)]
+                        _LOGGER.debug(f"Updated select option to: {self._attr_current_option}")
+                    else:
+                        # Try with integer conversion for strings that are numbers
+                        if isinstance(value, str) and value.isdigit():
+                            int_key = str(int(value))
+                            if int_key in self._dp_definition.options:
+                                self._attr_current_option = self._dp_definition.options[int_key]
+                                _LOGGER.debug(f"Updated select option (from digit) to: {self._attr_current_option}")
+                            else:
+                                self._attr_current_option = None
+                                _LOGGER.debug(f"No option found for numeric value: {value}")
+                        else:
+                            self._attr_current_option = None
+                            _LOGGER.debug(f"No option found for value: {value}")
                 else:
                     self._attr_current_option = None
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(f"Error updating select option: {e}")
                 self._attr_current_option = None
 
         # For number entities, update the native value

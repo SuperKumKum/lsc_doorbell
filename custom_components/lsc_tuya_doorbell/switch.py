@@ -2,6 +2,7 @@
 from typing import Any
 import logging
 import asyncio
+from datetime import datetime
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -174,8 +175,6 @@ class TuyaDoorbellSwitch(TuyaDoorbellEntity, SwitchEntity):
         
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        from datetime import datetime
-        import asyncio
         
         # Always use boolean values for switches
         _LOGGER.debug(f"Attempting to turn on {self.entity_id} with boolean True")
@@ -308,7 +307,6 @@ class TuyaDoorbellSwitch(TuyaDoorbellEntity, SwitchEntity):
             
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
-        from datetime import datetime
         
         if self._is_momentary:
             # For momentary switches, just reset the virtual state immediately
