@@ -309,8 +309,24 @@ class TuyaDoorbellListener:
         
         # Fire a disconnection event
         config = self.hub.entry.data
+        
+        # Create a device-specific event type by adding device name
+        device_name = config[CONF_NAME].lower().replace(" ", "_")
+        device_specific_event = f"{EVENT_DEVICE_DISCONNECTED}_{device_name}"
+        
+        # Fire both generic and device-specific events for compatibility
         self.hub.hass.bus.async_fire(
             EVENT_DEVICE_DISCONNECTED, 
+            {
+                ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
+                ATTR_TIMESTAMP: datetime.now().isoformat(),
+                "name": config[CONF_NAME]
+            }
+        )
+        
+        # Also fire a device-specific event for multi-device setups
+        self.hub.hass.bus.async_fire(
+            device_specific_event, 
             {
                 ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
                 ATTR_TIMESTAMP: datetime.now().isoformat(),
@@ -445,8 +461,24 @@ class LscTuyaHub:
                 self.last_heartbeat = datetime.now().isoformat()
                 
                 # Fire a connection event
+                # Create a device-specific event type by adding device name
+                device_name = config[CONF_NAME].lower().replace(" ", "_")
+                device_specific_event = f"{EVENT_DEVICE_CONNECTED}_{device_name}"
+                
+                # Fire both generic and device-specific events for compatibility
                 self.hass.bus.async_fire(
                     EVENT_DEVICE_CONNECTED, 
+                    {
+                        ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
+                        ATTR_TIMESTAMP: datetime.now().isoformat(),
+                        "host": host,
+                        "name": config[CONF_NAME]
+                    }
+                )
+                
+                # Also fire a device-specific event for multi-device setups
+                self.hass.bus.async_fire(
+                    device_specific_event, 
                     {
                         ATTR_DEVICE_ID: config[CONF_DEVICE_ID],
                         ATTR_TIMESTAMP: datetime.now().isoformat(),
@@ -909,9 +941,22 @@ class LscTuyaHub:
                 _LOGGER.debug("DP %s not mapped to any known event (value: %s)", dp, value)
 
             if event_type:
+                # Create a device-specific event type by adding device name
+                device_name = config[CONF_NAME].lower().replace(" ", "_")
+                device_specific_event = f"{event_type}_{device_name}"
+                
+                # Add device name to event data for easier identification
+                event_data["device_name"] = config[CONF_NAME]
+                
                 _LOGGER.info("Firing event %s with data: %s (hash: %s)", event_type, event_data, current_hash[:8])
+                
+                # Fire both the generic event (for backward compatibility)
                 self.hass.bus.async_fire(event_type, event_data)
-                _LOGGER.debug("Event fired successfully")
+                
+                # And the device-specific event (for multi-device setups)
+                self.hass.bus.async_fire(device_specific_event, event_data)
+                
+                _LOGGER.debug("Event fired successfully (generic and device-specific)")
 
         except Exception as e:
             _LOGGER.error("Unexpected error handling DP %s: %s", dp, str(e))

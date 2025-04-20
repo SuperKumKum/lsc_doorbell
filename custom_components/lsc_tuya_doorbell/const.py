@@ -1,10 +1,20 @@
 from homeassistant.const import CONF_NAME, CONF_HOST, CONF_DEVICE_ID, CONF_PORT
 
 DOMAIN = "lsc_tuya_doorbell"
-EVENT_BUTTON_PRESS = "lsc_tuya_doorbell_button_press"
-EVENT_MOTION_DETECT = "lsc_tuya_doorbell_motion"
-EVENT_DEVICE_CONNECTED = "lsc_tuya_doorbell_connected"
-EVENT_DEVICE_DISCONNECTED = "lsc_tuya_doorbell_disconnected"
+
+# Base event types - generic events for backward compatibility
+EVENT_BUTTON_PRESS = "lsc_tuya_doorbell_button_press"  # Generic event
+EVENT_MOTION_DETECT = "lsc_tuya_doorbell_motion"       # Generic event
+EVENT_DEVICE_CONNECTED = "lsc_tuya_doorbell_connected"     # Generic event
+EVENT_DEVICE_DISCONNECTED = "lsc_tuya_doorbell_disconnected"   # Generic event
+
+# For device-specific events, the integration also fires:
+# {EVENT_TYPE}_{device_name} where device_name is lowercase with underscores
+# Examples:
+# - lsc_tuya_doorbell_button_press_front_door
+# - lsc_tuya_doorbell_motion_front_door 
+# - lsc_tuya_doorbell_connected_side_door
+# - lsc_tuya_doorbell_disconnected_side_door
 
 CONF_LOCAL_KEY = "local_key"
 CONF_MAC = "mac"
