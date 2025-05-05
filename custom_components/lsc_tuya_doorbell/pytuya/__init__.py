@@ -433,7 +433,8 @@ class MessageDispatcher(ContextualLogger):
     # Heartbeats on protocols < 3.3 respond with sequence number 0,
     # so they can't be waited for like other messages.
     # This is a hack to allow waiting for heartbeats.
-    HEARTBEAT_SEQNO = -100
+    # Using -100 has caused issues with error reporting, changing to -1000
+    HEARTBEAT_SEQNO = -1000
     RESET_SEQNO = -101
     SESS_KEY_SEQNO = -102
 
@@ -685,16 +686,34 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
         async def heartbeat_loop():
             """Continuously send heart beat updates."""
             self.debug("Started heartbeat loop")
+            consecutive_failures = 0
+            max_consecutive_failures = 3  # Allow up to 3 consecutive failures before disconnecting
+            
             while True:
                 try:
+                    # Clean up any existing heartbeat listeners before sending new heartbeat
+                    if self.dispatcher and MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
+                        self.debug("Cleaning up stale heartbeat listener before heartbeat loop")
+                        del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
+                        
                     await self.heartbeat()
+                    consecutive_failures = 0  # Reset counter on success
                     await asyncio.sleep(HEARTBEAT_INTERVAL)
                 except asyncio.CancelledError:
                     self.debug("Stopped heartbeat loop")
                     raise
                 except asyncio.TimeoutError:
-                    self.debug("Heartbeat failed due to timeout, disconnecting")
-                    break
+                    consecutive_failures += 1
+                    self.debug("Heartbeat failed due to timeout (%d/%d failures)", 
+                              consecutive_failures, max_consecutive_failures)
+                    
+                    # Only disconnect after multiple consecutive failures
+                    if consecutive_failures >= max_consecutive_failures:
+                        self.debug("Too many consecutive heartbeat failures, disconnecting")
+                        break
+                    
+                    # Wait before retrying
+                    await asyncio.sleep(HEARTBEAT_INTERVAL)
                 except Exception as ex:  # pylint: disable=broad-except
                     self.error("Heartbeat failed (%s), disconnecting", ex)
                     # Cleanup any heartbeat listeners to prevent future conflicts
@@ -727,10 +746,11 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
         
         # Clean up the dispatcher's listeners to prevent issues on reconnection
         if self.dispatcher is not None:
-            # Clear any heartbeat listeners that might be hanging around
-            if MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
-                self.debug("Cleaning up stale heartbeat listener during disconnect")
-                del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
+            # Clear any special sequence number listeners that might be hanging around
+            for special_seqno in [MessageDispatcher.HEARTBEAT_SEQNO, MessageDispatcher.RESET_SEQNO, MessageDispatcher.SESS_KEY_SEQNO]:
+                if special_seqno in self.dispatcher.listeners:
+                    self.debug("Cleaning up stale listener %d during disconnect", special_seqno)
+                    del self.dispatcher.listeners[special_seqno]
         
         # Clear internal state
         self.transport = None
@@ -771,10 +791,12 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
                 pass
             self.heartbeater = None
         if self.dispatcher is not None:
-            # Clean up any stale heartbeat listeners
-            if MessageDispatcher.HEARTBEAT_SEQNO in self.dispatcher.listeners:
-                self.debug("Cleaning up stale heartbeat listener during close")
-                del self.dispatcher.listeners[MessageDispatcher.HEARTBEAT_SEQNO]
+            # Clean up any special sequence number listeners
+            for special_seqno in [MessageDispatcher.HEARTBEAT_SEQNO, MessageDispatcher.RESET_SEQNO, MessageDispatcher.SESS_KEY_SEQNO]:
+                if special_seqno in self.dispatcher.listeners:
+                    self.debug("Cleaning up stale listener %d during close", special_seqno)
+                    del self.dispatcher.listeners[special_seqno]
+            # Abort all remaining listeners
             self.dispatcher.abort()
             self.dispatcher = None
         if self.transport is not None:
@@ -864,6 +886,12 @@ class TuyaProtocol(asyncio.Protocol, ContextualLogger):
             if msg is None:
                 self.debug("Wait was aborted for seqno %d", seqno)
                 return None
+        except asyncio.TimeoutError:
+            self.debug("Timeout waiting for response to command %s", command)
+            # Don't treat timeouts on heartbeats as fatal errors
+            if payload.cmd == HEART_BEAT:
+                return None
+            return None
         except Exception as ex:
             self.error("Error waiting for response to command %s: %s", command, ex)
             return None

@@ -50,12 +50,16 @@ Setting up is easy through the Home Assistant UI:
 2. Click the **"+ Add Integration"** button
 3. Search for "LSC Tuya Doorbell" and select it
 4. Enter the following information:
-   - **Name**: A friendly name for your doorbell
+   - **Name**: A friendly name for your doorbell (used in entity names and events)
    - **Device ID**: Your doorbell's Tuya device ID
    - **Local Key**: Your doorbell's local key
    - **IP Address**: Your doorbell's IP address or a subnet to scan (e.g., 192.168.1.0/24)
    - **Port**: The port your doorbell uses (default: 6668)
    - **Protocol Version**: The Tuya protocol version to use (default: 3.3)
+   - **Advanced Options**:
+     - **Doorbell Button Event**: The datapoint (DP) for doorbell button presses (default: 185)
+     - **Motion Detection Event**: The datapoint (DP) for motion detection (default: 115)
+     - **Custom DPS Mapping**: Advanced customization for other datapoints
 
 The integration will:
 1. Connect directly to your doorbell using the local Tuya protocol
@@ -68,8 +72,12 @@ If you need to modify your doorbell configuration after setup (for example, to c
 
 1. Go to **Settings** → **Devices & Services**
 2. Find the LSC Tuya Doorbell integration and click **Configure**
-3. Update your settings and click **Submit**
-4. If updating the protocol version, the integration will attempt to reconnect using the new version
+3. Update your settings and click **Submit**. You can modify:
+   - Device name (which will update entity names and event types)
+   - Protocol version
+   - Connection settings (IP, port, etc.)
+   - Datapoint mappings (if your doorbell uses different DPs for button presses or motion)
+4. After saving, the integration will automatically reconnect with the new settings
 
 You can also completely remove and re-add the integration if needed.
 
@@ -94,16 +102,69 @@ To use this integration, you'll need your doorbell's device ID and local key. He
 - Use [Tuya Cloudcutter](https://github.com/tuya-cloudcutter/tuya-cloudcutter) to unbind your device and generate local keys
 - Use the [LSC2MQTT](https://github.com/ACE1046/LSC2MQTT) project which can help retrieve keys for LSC devices
 
-## 🔄 Working with Events
+## 🔄 Working with Automations
 
-The integration fires device-specific events for each doorbell device that include the device name in the event type:
+### Device Triggers
+
+The integration provides clean, easy-to-use device triggers that you can select directly in the automation UI:
+
+1. Create a new automation
+2. Select "Device" as your trigger
+3. Choose your doorbell device
+4. Select one of these trigger types:
+   - **Doorbell button pressed** - When someone presses the doorbell button
+   - **Motion detected** - When motion is detected 
+   - **Device connected** - When the doorbell connects to Home Assistant
+   - **Device disconnected** - When the doorbell disconnects from Home Assistant
+
+These named device triggers make it easy to create automations without confusion.
+
+### Automation Helper Service
+
+If you're having trouble with the automation UI or want to quickly create consistent automations, you can use the included helper service:
+
+1. Go to **Developer Tools** → **Services**
+2. Select the `lsc_tuya_doorbell.create_automation` service
+3. Enter these parameters:
+   - **Device ID**: Select your doorbell device from the dropdown
+   - **Event Type**: Choose the type of event (button_press, motion, connected, disconnected)
+   - **Automation Name** (optional): A descriptive name for your automation
+
+4. Call the service, and it will generate a complete automation template and show it in a notification
+5. Copy the YAML template and add it to your automations.yaml file, or use it to create a new automation in the UI
+
+This service helps you create automations with the correct event syntax for your specific doorbell device without having to worry about constructing the event names manually.
+
+### Event Triggers and Binary Sensors
+
+The integration provides both device triggers and binary sensors that respond to doorbell events:
+
+#### Binary Sensors
+
+Two key binary sensors are created for each doorbell device:
+
+- **Doorbell Button**: A binary sensor (`binary_sensor.<device_name>_doorbell_button`) that turns ON briefly when someone presses the doorbell button
+- **Motion Detection**: A binary sensor (`binary_sensor.<device_name>_motion_detection`) that turns ON briefly when motion is detected
+
+These binary sensors are linked to the datapoints specified in your integration configuration:
+
+- The **Doorbell Button** sensor is linked to the "Doorbell Button Event" datapoint (usually DP 185)
+- The **Motion Detection** sensor is linked to the "Motion Detection Event" datapoint (usually DP 115)
+
+If your doorbell uses different datapoints, you can customize these in the integration's configuration settings.
+
+#### Device-Specific Events
+
+For more advanced use cases, the integration fires device-specific events (generic events are no longer used):
 
 - `lsc_tuya_doorbell_button_press_front_door`: Button press on the "Front Door" doorbell
 - `lsc_tuya_doorbell_motion_front_door`: Motion detected by the "Front Door" doorbell
 - `lsc_tuya_doorbell_connected_front_door`: "Front Door" doorbell connected
 - `lsc_tuya_doorbell_disconnected_front_door`: "Front Door" doorbell disconnected
 
-The naming format is `lsc_tuya_doorbell_<event_type>_<device_name>` where `<device_name>` is the lowercase, underscore-separated version of your configured device name. This makes it easier to create automations specific to each doorbell device.
+The naming format is `lsc_tuya_doorbell_<event_type>_<device_name>` where `<device_name>` is the lowercase, underscore-separated version of your configured device name.
+
+These events are also mapped to the datapoints specified in your integration configuration, making it easy to customize if your doorbell uses different datapoints than the defaults. This makes it easier to create automations specific to each doorbell device.
 
 ### 📸 Displaying Doorbell Images
 
@@ -250,7 +311,37 @@ cards:
         attribute: motion_count
 ```
 
-### Example Automation: Doorbell Press with Image Notification
+### Example Automation: Doorbell Button Binary Sensor
+
+```yaml
+automation:
+  - alias: "Doorbell Button Press - Binary Sensor Trigger"
+    trigger:
+      platform: state
+      entity_id: binary_sensor.front_door_doorbell_button
+      to: "on"
+    action:
+      # Flash lights to indicate someone is at the door
+      - service: light.turn_on
+        target:
+          entity_id: light.porch_light
+        data:
+          flash: short
+          
+      # Announce on speakers
+      - service: media_player.volume_set
+        target:
+          entity_id: media_player.living_room_speaker
+        data:
+          volume_level: 0.6
+      - service: tts.google_translate_say
+        target:
+          entity_id: media_player.living_room_speaker
+        data:
+          message: "Someone is at the front door"
+```
+
+### Example Automation: Doorbell Press with Image Notification (Event-Based)
 
 ```yaml
 automation:
@@ -314,7 +405,40 @@ automation:
                 title: "Ignore"
 ```
 
-### Example Automation: Motion Detection Notification with Image
+### Example Automation: Motion Detection Binary Sensor
+
+```yaml
+automation:
+  - alias: "Motion Detection - Binary Sensor Trigger"
+    trigger:
+      platform: state
+      entity_id: binary_sensor.front_door_motion_detection
+      to: "on"
+    action:
+      # Turn on porch light when motion is detected
+      - service: light.turn_on
+        target:
+          entity_id: light.porch_light
+        data:
+          brightness_pct: 100
+        condition:
+          condition: sun
+          after: sunset
+          before: sunrise
+          
+      # Turn off light after 2 minutes
+      - delay:
+          minutes: 2
+      - service: light.turn_off
+        target:
+          entity_id: light.porch_light
+        condition:
+          condition: sun
+          after: sunset
+          before: sunrise
+```
+
+### Example Automation: Motion Detection Notification with Image (Event-Based)
 
 ```yaml
 automation:
@@ -564,21 +688,38 @@ This project is licensed under the MIT License.
 
 ## 📋 Release Notes
 
-### 2025-04-20 Updates
-- Converted to device-specific-only events for multi-doorbell setups (e.g., `lsc_tuya_doorbell_button_press_front_door`)
-- Fixed thread safety issue with `async_write_ha_state()` using `hass.add_job()`
-- Improved Entity naming to include device name for clearer identification
-- Added configuration field description for device name highlighting its use in entity names
-- Fixed dropdown options for Night Vision and Motion Sensitivity (properly mapping values)
-- Fixed entity state handling for select/dropdown controls
-- Changed volume sliders to scale from 1-10 instead of 0-100
-- Updated Device Volume to display as fixed value rather than percentage
-- Fixed momentary switch behavior for Indicator switch (DP 101)
-- Enhanced base64 data decoding for better display in entity states
-- Fixed config flow errors in integration setup
-- Fixed missing datetime import in switch.py
-- Fixed key error when reloading integration
-- Removed redundant image URL attributes from Connection Status sensor
+### v1.7.1 (2025-05-05)
+- Fixed "Error waiting for response to command 9: -100" issue that occurred during heartbeat operations
+- Improved heartbeat handling with better error recovery:
+  - Changed internal heartbeat sequence number to avoid conflicts
+  - Added retry mechanism with consecutive failure tracking
+  - Made the code more resilient to network interruptions
+  - Improved cleanup of stale message listeners
+- Enhanced error handling for network timeouts and connection issues
+- Added more robust handling of device connection state to prevent disconnections
+
+### v1.7.0 (2025-04-20)
+- Fixed binary sensor entity naming to include device name and proper entity type labels
+- Changed entity naming convention to include [Binary Sensor], [Switch], etc. for better identification
+- Added explicit entity_id generation to ensure consistent naming in UI and automations
+- Added thread safety for all entities with proper hass.add_job() usage
+- Fixed duplicate switch entities by improving entity naming and registration
+- Completely rewrote switch handling to use actual device states instead of virtual states
+- Removed momentary switch behavior - all switches are now permanent as intended
+- Fixed issues with Motion Sensitivity and Recording Mode controls:
+  - Added special string/integer type handling for controls reporting mixed types
+  - Fixed Recording Mode (DP 151) to handle inconsistent device responses
+  - Improved data type conversions to match device-reported values correctly
+  - Added better state verification to handle Tuya protocol inconsistencies
+- Improved entity state update handling to avoid conflicts between manual and auto updates
+- Updated hub's set_dp method to better handle type conversions between string and integer values
+- Fixed entity category assignment with EntityCategory.DIAGNOSTIC for proper UI organization
+- Changed to device-specific events only (removed generic events) for multi-device support
+- Updated motion and button event handling to use device-specific event types
+- Fixed issue with event handler registrations to prevent event handler leaks
+- Made all switch entities enabled by default in the UI with entity_registry_enabled_default = True
+- Added proper error handling for switch commands with clearer error messages
+- Enhanced logging with more descriptive debug messages for troubleshooting
 
 ### Known Issues
 - Some Tuya doorbells may use different datapoints than the default ones
