@@ -91,3 +91,5 @@ debug.log
 dev_notes/
 local/
 .aider*
+
+**/.claude/settings.local.json

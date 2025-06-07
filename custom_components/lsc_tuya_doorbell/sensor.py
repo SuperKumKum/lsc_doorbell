@@ -206,6 +206,8 @@ class LscTuyaStatusSensor(SensorEntity):
         # Store the latest event data
         self._last_doorbell_time = None
         self._last_motion_time = None
+        self._last_doorbell_image = None
+        self._last_motion_image = None
         self._event_counters = {
             "doorbell": 0,
             "motion": 0
@@ -246,8 +248,7 @@ class LscTuyaStatusSensor(SensorEntity):
         
         # Extract image URL if available
         if "image_url" in event.data:
-            self._attr_extra_state_attributes["last_doorbell_image"] = event.data["image_url"]
-            self._attr_extra_state_attributes["doorbell_image_url"] = event.data["image_url"]
+            self._last_doorbell_image = event.data["image_url"]
             
         # Update the entity state to reflect new data - using event loop to avoid thread safety issues
         if self.hass:
@@ -264,8 +265,7 @@ class LscTuyaStatusSensor(SensorEntity):
         
         # Extract image URL if available
         if "image_url" in event.data:
-            self._attr_extra_state_attributes["last_motion_image"] = event.data["image_url"]
-            self._attr_extra_state_attributes["motion_image_url"] = event.data["image_url"]
+            self._last_motion_image = event.data["image_url"]
             
         # Update the entity state to reflect new data - using event loop to avoid thread safety issues
         if self.hass:
@@ -305,6 +305,13 @@ class LscTuyaStatusSensor(SensorEntity):
         if self._last_motion_time:
             attrs["last_motion_time"] = self._last_motion_time
         
-        # We're removing all image URL attributes as requested
+        # Include image URLs if available
+        if self._last_doorbell_image:
+            attrs["last_doorbell_image"] = self._last_doorbell_image
+            attrs["doorbell_image_url"] = self._last_doorbell_image
+            
+        if self._last_motion_image:
+            attrs["last_motion_image"] = self._last_motion_image
+            attrs["motion_image_url"] = self._last_motion_image
             
         return attrs
