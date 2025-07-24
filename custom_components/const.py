@@ -36,7 +36,7 @@ RESULT_NOT_FOUND = "not_found"
 RESULT_CONNECTION_FAILED = "connection_failed"
 
 DEFAULT_PORT = 6668
-DEFAULT_PROTOCOL_VERSION = "3.3"
+DEFAULT_PROTOCOL_VERSION = "3.4"
 DEFAULT_DPS_MAP = {
     "button": "185",
     "motion": "115"
@@ -47,7 +47,7 @@ PROTOCOL_VERSIONS = ["3.3", "3.1", "3.4", "3.2"]
 
 # Firmware versions supported by the device
 FIRMWARE_VERSIONS = ["Version 4", "Version 5", "Version 6"]
-DEFAULT_FIRMWARE_VERSION = "Version 4"
+DEFAULT_FIRMWARE_VERSION = "Version 6"
 
 # DPS options for each firmware version
 V4_DPS_OPTIONS = {
