@@ -293,10 +293,206 @@ V5_DP_DEFINITIONS = {
     ),
 }
 
+V6_DP_DEFINITIONS = {
+    "104": DPDefinition(
+        id="104",
+        code="basic_osd",
+        name="OSD Watermark",
+        dp_type=DPType.BOOLEAN,  # "bool" in v6
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:watermark"
+    ),
+    "108": DPDefinition(
+        id="108",
+        code="basic_nightvision",
+        name="Night Vision",
+        dp_type=DPType.ENUM,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:weather-night",
+        options={
+            "0": "Auto",
+            "1": "Off",
+            "2": "On"
+        }
+    ),
+    "109": DPDefinition(
+        id="109",
+        code="sd_storge",
+        name="SD Card Capacity",
+        dp_type=DPType.STRING,  # "string" in v6
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:micro-sd"
+    ),
+    "110": DPDefinition(
+        id="110",
+        code="sd_status",
+        name="SD Card Status",
+        dp_type=DPType.INTEGER,  # "value" in v6 → integer
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:micro-sd"
+    ),
+    "111": DPDefinition(
+        id="111",
+        code="sd_format",
+        name="Format SD Card",
+        dp_type=DPType.BOOLEAN,
+        category=DPCategory.STATUS_ONLY,  # Avoid interactive format
+        icon="mdi:format-color-fill"
+    ),
+    "115": DPDefinition(
+        id="115",
+        code="movement_detect_pic",
+        name="Motion Detected",
+        dp_type=DPType.RAW,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:motion-sensor"
+    ),
+    "117": DPDefinition(
+        id="117",
+        code="sd_format_state",
+        name="SD Format State",
+        dp_type=DPType.INTEGER,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:format-color-fill"
+    ),
+    "136": DPDefinition(
+        id="136",
+        code="doorbell_active",
+        name="Doorbell Active",
+        dp_type=DPType.STRING,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:doorbell"
+    ),
+    "145": DPDefinition(
+        id="145",
+        code="wireless_electricity",
+        name="Battery Level",
+        dp_type=DPType.INTEGER,  # "value"
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:battery"
+    ),
+    "146": DPDefinition(
+        id="146",
+        code="wireless_powermode",
+        name="Power Mode",
+        dp_type=DPType.ENUM,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:power-settings",
+        options={
+            "0": "Normal",
+            "1": "Power Saving",
+            "2": "Performance"
+        }
+    ),
+    "147": DPDefinition(
+        id="147",
+        code="wireless_lowpower",
+        name="Low Power Threshold",
+        dp_type=DPType.INTEGER,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:battery-alert-variant"
+    ),
+    "149": DPDefinition(
+        id="149",
+        code="wireless_awake",
+        name="Device Awake",
+        dp_type=DPType.BOOLEAN,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:power"
+    ),
+    "152": DPDefinition(
+        id="152",
+        code="pir_switch",
+        name="PIR Sensitivity",
+        dp_type=DPType.ENUM,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:motion-sensor",
+        options={
+            "0": "Low",
+            "1": "Medium",
+            "2": "High"
+        }
+    ),
+    "154": DPDefinition(
+        id="154",
+        code="doorbell_pic",
+        name="Doorbell Snapshot",
+        dp_type=DPType.RAW,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:camera"
+    ),
+    "159": DPDefinition(
+        id="159",
+        code="siren_switch",
+        name="Siren Switch",
+        dp_type=DPType.BOOLEAN,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:bullhorn"
+    ),
+    "160": DPDefinition(
+        id="160",
+        code="basic_device_volume",
+        name="Device Volume",
+        dp_type=DPType.INTEGER,  # "value"
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:volume-high",
+        min_value=1,
+        max_value=10,
+        step=1
+    ),
+    "170": DPDefinition(
+        id="170",
+        code="humanoid_filter",
+        name="Human Detection",
+        dp_type=DPType.BOOLEAN,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:account"
+    ),
+    "185": DPDefinition(
+        id="185",
+        code="alarm_message",
+        name="Alarm Report",
+        dp_type=DPType.RAW,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:alarm-light"
+    ),
+    "188": DPDefinition(
+        id="188",
+        code="basic_anti_flicker",
+        name="Anti-Flicker Mode",
+        dp_type=DPType.ENUM,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:flash",
+        options={
+            "0": "Auto",
+            "1": "50Hz",
+            "2": "60Hz"
+        }
+    ),
+    "212": DPDefinition(
+        id="212",
+        code="initiative_message",
+        name="Initiative Message",
+        dp_type=DPType.RAW,
+        category=DPCategory.STATUS_ONLY,
+        icon="mdi:message"
+    ),
+    "231": DPDefinition(
+        id="231",
+        code="hide_voice_change",
+        name="Hide Voice Change",
+        dp_type=DPType.BOOLEAN,
+        category=DPCategory.STATUS_FUNCTION,
+        icon="mdi:voice"
+    ),
+}
+
 # Function to get DP definitions based on firmware version
 def get_dp_definitions(firmware_version: str) -> Dict[str, DPDefinition]:
     """Return the appropriate DP definitions based on firmware version."""
     if firmware_version == "Version 5":
         return V5_DP_DEFINITIONS
+    elif firmware_version == "Version 6":
+        return V6_DP_DEFINITIONS
     else:  # Default to Version 4
         return V4_DP_DEFINITIONS
