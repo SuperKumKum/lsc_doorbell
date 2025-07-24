@@ -8,48 +8,35 @@ from datetime import datetime
 _LOGGER = logging.getLogger(__name__)
 
 async def async_scan_network(port: int = 6668, timeout: float = 1.0) -> List[Tuple[str, str]]:
-    """Scan the local network for Tuya devices."""
+    """Scan the 192.168.1.0/24 network for Tuya devices."""
     devices = []
-interfaces = netifaces.interfaces()
 
     _LOGGER.info("Starting network scan for devices on port %s", port)
-_LOGGER.debug("Found network interfaces: %s", interfaces)
 
-    for interface in interfaces:
-        addrs = netifaces.ifaddresses(interface).get(netifaces.AF_INET, [])
-        _LOGGER.debug("Interface %s has %d IPv4 addresses", interface, len(addrs))
+    try:
+        # Scan only the 192.168.1.0/24 subnet (192.168.1.1 to 192.168.1.126)
+        network = IPv4Network("192.168.1.0/24", strict=False)
+        _LOGGER.info("Scanning network %s (%d hosts)", network, network.num_addresses - 2)
 
-        for addr in addrs:
-            if 'addr' not in addr or 'netmask' not in addr:
-                _LOGGER.debug("Skipping interface %s: missing addr or netmask", interface)
-                continue
+        # Split into chunks to process in parallel (max 25 concurrent)
+        hosts = list(network.hosts())
+        chunk_size = 25
+        host_chunks = [hosts[i:i + chunk_size] for i in range(0, len(hosts), chunk_size)]
 
-            try:
-                network = IPv4Network(f"{addr['addr']}/{addr['netmask']}", strict=False)
-                _LOGGER.info("Scanning interface %s network %s (%d hosts)",
-                             interface, network, network.num_addresses - 2)
+        for chunk_idx, chunk in enumerate(host_chunks):
+            _LOGGER.debug("Processing chunk %d/%d", chunk_idx+1, len(host_chunks))
+            tasks = [async_check_device(str(ip), port, timeout) for ip in chunk]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Split into chunks to process in parallel (max 25 concurrent)
-                hosts = list(network.hosts())
-                chunk_size = 25
-                host_chunks = [hosts[i:i + chunk_size] for i in range(0, len(hosts), chunk_size)]
-
-                for chunk_idx, chunk in enumerate(host_chunks):
-                    _LOGGER.debug("Processing chunk %d/%d on interface %s",
-                                 chunk_idx+1, len(host_chunks), interface)
-                    tasks = [async_check_device(str(ip), port, timeout) for ip in chunk]
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-                    for result in results:
-                        if isinstance(result, Exception):
-                            continue
-                        if result and isinstance(result, tuple):
-                            ip, mac = result
-                            _LOGGER.info("Found device at %s with MAC %s", ip, mac)
-                            devices.append(result)
-            except Exception as e:
-                _LOGGER.exception("Error scanning network %s on interface %s: %s",
-                                 addr.get('addr'), interface, str(e))
+            for result in results:
+                if isinstance(result, Exception):
+                    continue
+                if result and isinstance(result, tuple):
+                    ip, mac = result
+                    _LOGGER.info("Found device at %s with MAC %s", ip, mac)
+                    devices.append(result)
+    except Exception as e:
+        _LOGGER.exception("Error scanning network 192.168.1.0/24: %s", str(e))
 
     _LOGGER.info("Network scan complete. Found %d devices with port %s open", len(devices), port)
     return devices
